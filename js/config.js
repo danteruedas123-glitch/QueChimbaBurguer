@@ -15,8 +15,8 @@ window.QB_CONFIG = {
      Si se dejan vacíos, la web usa el menú de este archivo y solo WhatsApp.
      ⚠️  Usar SOLO la llave pública "anon"/"publishable" (nunca la service_role). */
   supabase: {
-    url: '',      // PENDIENTE · ej. 'https://xxxx.supabase.co'
-    anonKey: ''   // PENDIENTE · llave pública anon
+    url: 'https://twnrwzvrxejstcwhsjvi.supabase.co',
+    anonKey: 'sb_publishable_1rStgsHUh0OCrAvAs69CVw_-FvCcL7K'   // llave PÚBLICA (publishable)
   },
 
   negocio: {
