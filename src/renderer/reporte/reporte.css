@@ -1,5 +1,5 @@
 @font-face { font-family: 'Bricolage Grotesque'; src: url('../fonts/bricolage-800.woff2') format('woff2'); font-weight: 100 900; }
-:root { --ink: #1b1511; --muted: #6d6158; --line: #e7ddd0; --cream: #fff7ea; --ketchup: #d93418; --mustard: #ffb703; --green: #1f7a45; }
+:root { --ink: #1b1511; --muted: #6d6158; --line: #e7ddd0; --cream: #fff7ea; --ketchup: #d33216; --mustard: #ffb703; --green: #1f7a45; }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--ink); background: #fff; font: 10.5px/1.45 'Segoe UI', Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 h1, h2 { margin: 0; font-family: 'Bricolage Grotesque', Arial, sans-serif; font-weight: 800; font-stretch: 80%; }

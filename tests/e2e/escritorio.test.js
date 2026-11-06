@@ -314,6 +314,35 @@ test('el botón "Desactivar web" (con confirmación) bloquea los pedidos y avisa
   await page.waitForFunction(() => document.querySelector('[data-chip-web]')?.textContent === 'Web activada', { timeout: 10000, polling: 100 });
 });
 
+test('festividades: elegir Halloween y su diseño se publica en la web', async () => {
+  await irA('ajustes', '[data-fest="halloween"]');
+  await page.click('[data-fest="halloween"]');
+  await page.waitForFunction(async () => (await window.qb.demo.rpc('menu_publico', {})).datos.festividad.tema === 'halloween', { timeout: 10000, polling: 100 });
+  await page.waitForSelector('[data-variante="2"]');
+  await page.click('[data-variante="2"]');
+  await page.waitForFunction(async () => (await window.qb.demo.rpc('menu_publico', {})).datos.festividad.variante === 2, { timeout: 10000, polling: 100 });
+  assert.match(await texto('[data-fest-hoy]'), /Halloween · diseño 2/);
+  await captura('10-festividades');
+});
+
+test('aniversario: la primera vez pide la fecha y el número, y queda activo', async () => {
+  await page.click('[data-fest="aniversario"]');
+  await page.waitForSelector('dialog.modal [name=dia]');
+  await page.type('dialog.modal [name=dia]', '15');
+  await page.select('dialog.modal [name=mes]', '3');
+  await page.type('dialog.modal [name=numero]', '3');
+  await captura('11-registrar-aniversario');
+  await page.click('dialog.modal [data-aceptar]');
+  await page.waitForFunction(() => !document.querySelector('dialog.modal'), { timeout: 10000, polling: 100 });
+  const f = (await rpc('menu_publico')).datos.festividad;
+  assert.equal(f.tema, 'aniversario');
+  const aj = (await rpc('menu_admin')).datos.ajustes;
+  assert.deepEqual([aj.aniversario_dia, aj.aniversario_mes, aj.aniversario_fundacion], [15, 3, Number(hoyEn().slice(0, 4)) - 3]);
+  assert.match(await texto('.aniversario-info'), /15 de marzo/);
+  await page.click('[data-fest="normal"]');
+  await page.waitForFunction(async () => (await window.qb.demo.rpc('menu_publico', {})).datos.festividad.tema === 'normal', { timeout: 10000, polling: 100 });
+});
+
 test('cancelar la confirmación deja la web activada', async () => {
   await page.click('[data-web]');
   await page.waitForSelector('dialog.modal [data-cerrar]');

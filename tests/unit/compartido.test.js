@@ -132,3 +132,20 @@ describe('utilidades', () => {
     assert.match(mensajeError({ message: 'Invalid login credentials' }), /incorrectos/);
   });
 });
+
+describe('festividades (app)', async () => {
+  const { FESTIVIDADES, proximoAniversario } = await import('../../src/shared/festividades.js');
+  test('lista completa: normal + 9 festividades + aniversario, sin repetidos', () => {
+    assert.equal(FESTIVIDADES.length, 11);
+    assert.equal(new Set(FESTIVIDADES.map((f) => f.id)).size, 11);
+  });
+  test('próximo aniversario: fecha, número y semana en curso', () => {
+    const a = { dia: 15, mes: 3, fundacion: 2023 };
+    assert.deepEqual(proximoAniversario(a, '2026-11-07'), { fecha: '2027-03-15', numero: 4, enCurso: false });
+    assert.deepEqual(proximoAniversario(a, '2026-03-10'), { fecha: '2026-03-15', numero: 3, enCurso: false });
+    assert.deepEqual(proximoAniversario(a, '2026-03-18'), { fecha: '2026-03-15', numero: 3, enCurso: true });
+    assert.deepEqual(proximoAniversario({ dia: 28, mes: 12, fundacion: 2020 }, '2027-01-02'), { fecha: '2026-12-28', numero: 6, enCurso: true });
+    assert.deepEqual(proximoAniversario({ dia: 29, mes: 2, fundacion: 2024 }, '2026-11-07'), { fecha: '2027-02-28', numero: 3, enCurso: false });
+    assert.deepEqual(proximoAniversario({ dia: 1, mes: 6, fundacion: 2026 }, '2026-07-01'), { fecha: '2027-06-01', numero: 1, enCurso: false });
+  });
+});

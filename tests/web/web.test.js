@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { nuevaBase } from '../helpers/bd.js';
+import { FESTIVIDADES } from '../../src/shared/festividades.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WEB = process.env.QB_WEB_DIR ?? path.resolve(RAIZ, '..', 'WebQuechimbaburger');
@@ -334,6 +335,114 @@ describe('web en vivo (sin recargar la pestaña)', () => {
     const src = await page.$eval('[data-promo-img]', (i) => i.getAttribute('src'));
     assert.match(src, /photo-1610614819513/, 'la foto es la del Combo x4');
     await ctx.admin(`update public.ajustes set producto_destacado_id = $1, foto_destacado_url = $2`, [original.producto_destacado_id, original.foto_destacado_url]);
+    await page.close();
+  });
+});
+
+describe('festividades', () => {
+  test('la web normal y los 30 diseños tienen contraste suficiente para leerse bien (WCAG AA)', async () => {
+    const { page } = await abrir();
+    const fallos = await page.evaluate(() => {
+      const aRgb = (c) => { const el = document.createElement('i'); el.style.color = c; document.body.append(el); const v = getComputedStyle(el).color.match(/[\d.]+/g).map(Number); el.remove(); return v; };
+      const lum = ([r, g, b]) => [r, g, b].map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }).reduce((s, x, i) => s + x * [0.2126, 0.7152, 0.0722][i], 0);
+      const contraste = (a, b) => { const [x, y] = [lum(aRgb(a)), lum(aRgb(b))].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+      const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      const malos = [];
+      const temas = [['normal', { variantes: [{}] }], ...Object.entries(window.QB_TEMAS)];
+      for (const [tema, t] of temas) {
+        t.variantes.forEach((_, i) => {
+          window.QB_aplicarTema({ tema, variante: i + 1, numero: 3 });
+          const pares = [
+            ['texto oscuro sobre botones', '#1b1511', v('--mustard')],
+            ['blanco sobre etiquetas', '#ffffff', v('--ketchup')],
+            ['crema sobre franja destacada', v('--cream'), v('--promo-bg')],
+            ['blanco sobre la cinta', '#ffffff', v('--cinta-bg')],
+            ['acento sobre fondo oscuro', v('--mustard'), v('--char')],
+            ['crema sobre fondo oscuro', v('--cream'), v('--char')],
+            ['acento rojo sobre fondo claro', v('--ketchup'), v('--cream')],
+          ];
+          for (const [nombre, a, b] of pares) {
+            const c = contraste(a, b);
+            if (c < 4.5) malos.push(`${tema} diseño ${i + 1}: ${nombre} = ${c.toFixed(2)}`);
+          }
+        });
+      }
+      window.QB_aplicarTema({ tema: 'normal' });
+      return malos;
+    });
+    assert.deepEqual(fallos, []);
+    await page.close();
+  });
+
+  test('la web tiene diseño para cada festividad de la app (y 3 diseños en cada una)', async () => {
+    const { page } = await abrir();
+    const temas = await page.evaluate(() => Object.fromEntries(Object.entries(window.QB_TEMAS).map(([k, t]) => [k, t.variantes.length])));
+    assert.deepEqual(['normal', ...Object.keys(temas)].sort(), FESTIVIDADES.map((f) => f.id).sort());
+    assert.ok(Object.values(temas).every((n) => n === 3));
+    await page.close();
+  });
+
+  test('cada festividad cambia cinta, sello, ícono de la pestaña, calcomanía y adornos', async () => {
+    const { page } = await abrir();
+    const r = await page.evaluate(() => {
+      window.QB_aplicarTema({ tema: 'halloween', variante: 1 });
+      return {
+        tema: document.documentElement.dataset.tema,
+        cinta: document.querySelector('[data-cinta]').textContent,
+        cintaVisible: !document.querySelector('[data-cinta]').hidden,
+        sello: document.querySelector('[data-sello]').textContent,
+        favicon: document.querySelector('[data-favicon]').href.startsWith('data:image/svg+xml,'),
+        calcomania: document.querySelector('[data-sticker]').textContent,
+        adornos: document.querySelectorAll('.adorno').length,
+        titulo: document.title.startsWith('🎃'),
+      };
+    });
+    assert.deepEqual(r, { tema: 'halloween', cinta: r.cinta, cintaVisible: true, sello: 'FELIZ HALLOWEEN ✦ DULCE O TRUCO ✦ ', favicon: true, calcomania: '🎃', adornos: 18, titulo: true });
+    assert.match(r.cinta, /Halloween/);
+    // Volver a normal deja la web como estaba
+    const n = await page.evaluate(() => { window.QB_aplicarTema({ tema: 'normal' }); return { tema: document.documentElement.dataset.tema ?? null, adornos: document.querySelectorAll('.adorno').length, favicon: document.querySelector('[data-favicon]').getAttribute('href'), cinta: document.querySelector('[data-cinta]').hidden }; });
+    assert.deepEqual(n, { tema: null, adornos: 0, favicon: 'assets/img/favicon-64.png', cinta: true });
+    await page.close();
+  });
+
+  test('el aniversario muestra el número correcto ("1 año", "5 años")', async () => {
+    const { page } = await abrir();
+    const textos = await page.evaluate(() => [1, 5].map((numero) => {
+      window.QB_aplicarTema({ tema: 'aniversario', variante: 1, numero });
+      return [document.querySelector('[data-cinta]').textContent, document.querySelector('[data-sello]').textContent];
+    }));
+    assert.match(textos[0][0], /¡Cumplimos 1 año!/);
+    assert.match(textos[1][0], /¡Cumplimos 5 años!/);
+    assert.match(textos[1][1], /^5 AÑOS/);
+    await page.close();
+  });
+
+  test('elegir la festividad en la app cambia la web en vivo, con el aniversario calculado por la base de datos', async () => {
+    const { page } = await abrir();
+    await ctx.staff('ajustes_guardar', { p: { tema: 'navidad' } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => document.documentElement.dataset.tema === 'navidad', { timeout: 5000, polling: 50 });
+    await ctx.staff('ajustes_guardar', { p: { aniversario: { dia: 1, mes: 1, numero: 4 }, tema: 'aniversario' } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => document.documentElement.dataset.tema === 'aniversario', { timeout: 5000, polling: 50 });
+    assert.match(await page.$eval('[data-cinta]', (e) => e.textContent), /4 años/);
+    await ctx.staff('ajustes_guardar', { p: { tema: 'normal', aniversario: null } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => !document.documentElement.dataset.tema, { timeout: 5000, polling: 50 });
+    await page.close();
+  });
+
+  test('los adornos no tapan botones y se quedan quietos si el usuario pide menos movimiento', async () => {
+    const { page } = await abrir();
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    const r = await page.evaluate(() => {
+      window.QB_aplicarTema({ tema: 'navidad', variante: 1 });
+      const boton = document.querySelector('.hero-ctas .btn--primary');
+      const b = boton.getBoundingClientRect();
+      const encima = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { botonAlcanzable: boton.contains(encima), animacion: getComputedStyle(document.querySelector('.adorno')).animationName };
+    });
+    assert.deepEqual(r, { botonAlcanzable: true, animacion: 'none' });
     await page.close();
   });
 });

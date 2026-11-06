@@ -88,6 +88,8 @@ export function crearApi(fuente) {
     actualizarCobro: (id, p) => rpc('pedido_actualizar_cobro', { p_id: id, p }),
     registrarVenta: (items, datos) => rpc('venta_registrar', { p_items: items, p_datos: datos }),
     reporte: (desde, hasta) => rpc('reporte_ventas', { p_desde: desde, p_hasta: hasta }),
+    /** Festividad que la web muestra HOY (incluye el aniversario automático). */
+    festividadHoy: async () => (await rpc('menu_publico'))?.festividad ?? { tema: 'normal' },
   };
 }
 

@@ -18,7 +18,7 @@
   --char-3: #2e241c;
   --mustard: #ffb703;
   --mustard-2: #ffc93c;
-  --ketchup: #d93418;
+  --ketchup: #d33216;
   --ketchup-2: #b92b12;
   --green: #1f9d55;
   --wa: #1fae5b;
@@ -316,6 +316,21 @@ tr.inactivo td { opacity: .55; }
 .activa .estado-web-punto { background: var(--green); box-shadow: 0 0 0 4px rgba(31, 157, 85, .2); }
 .inactiva .estado-web-punto { background: var(--ketchup); box-shadow: 0 0 0 4px rgba(217, 52, 24, .2); }
 .estado-web .btn { justify-self: start; }
+
+/* ---------- Festividades ---------- */
+.ajustes .tarjeta--ancha { grid-column: 1 / -1; }
+.fest-hoy { font-size: 14px; color: var(--muted); }
+.fest-hoy b { color: var(--ink); }
+.festividades-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.festividad { display: grid; justify-items: center; gap: 4px; padding: 14px 10px 12px; border: 1.5px solid var(--line); border-radius: 16px; background: var(--paper); text-align: center; transition: transform .15s var(--ease), border-color .15s, background .15s; }
+.festividad:hover { transform: translateY(-2px); border-color: var(--ink); }
+.festividad-emoji { font-size: 34px; line-height: 1.1; }
+.festividad b { font-size: 14px; }
+.festividad small { color: var(--muted); font-size: 12px; }
+.festividad[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--cream); box-shadow: 0 0 0 3px var(--mustard); }
+.festividad[aria-pressed="true"] small { color: var(--mustard); }
+.fest-diseno { flex-wrap: wrap; }
+.aniversario-info { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-radius: 14px; background: var(--cream-2); font-size: 14px; }
 
 /* ---------- Ajustes ---------- */
 .ajustes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; max-width: 1100px; }

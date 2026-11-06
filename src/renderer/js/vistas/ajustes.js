@@ -1,12 +1,15 @@
 /** Ajustes del negocio y de la app. */
-import { html, pintar, avisar, confirmar, $ } from '../ui.js';
+import { html, pintar, avisar, confirmar, modal, $ } from '../ui.js';
 import { mensajeError } from '../../../shared/utilidades.js';
+import { FESTIVIDADES, MESES_LARGOS, DIAS_ANIVERSARIO, proximoAniversario } from '../../../shared/festividades.js';
+import { hoyEn, fechaCorta } from '../../../shared/periodos.js';
 
 export async function montar(contenedor, ctx) {
   const menu = await ctx.api.menu();
   const a = menu.ajustes;
   const actualizacion = await window.qb.actualizador.estado();
   const sonido = localStorage.getItem('qb-sonido') !== 'off';
+  let festHoy = await ctx.api.festividadHoy().catch(() => ({ tema: 'normal' }));
 
   pintar(contenedor, html`
     <div class="ajustes">
@@ -19,6 +22,8 @@ export async function montar(contenedor, ctx) {
           <label class="interruptor"><input type="checkbox" data-sonido ${sonido ? 'checked' : ''} aria-label="Sonido de pedidos"> Sonido</label>
         </div>
       </div></section>
+
+      <section class="tarjeta tarjeta--ancha" data-festividades></section>
 
       <section class="tarjeta"><form class="tarjeta-cuerpo ajuste" data-destacado>
         <h3>Producto destacado en la web</h3>
@@ -59,6 +64,110 @@ export async function montar(contenedor, ctx) {
       return false;
     }
   };
+
+  // ---------- Festividades y aniversario ----------
+  let aj = a;
+  const anios = (n) => `${n} ${n === 1 ? 'año' : 'años'}`;
+  const pintarFestividades = () => {
+    const aniv = aj.aniversario_mes ? { dia: aj.aniversario_dia, mes: aj.aniversario_mes, fundacion: aj.aniversario_fundacion } : null;
+    const prox = aniv ? proximoAniversario(aniv, hoyEn()) : null;
+    const hoyF = FESTIVIDADES.find((f) => f.id === festHoy?.tema) ?? FESTIVIDADES[0];
+    pintar($('[data-festividades]', contenedor), html`
+      <div class="tarjeta-cuerpo ajuste">
+        <div class="ajuste-fila">
+          <h3>Festividades de la página web</h3>
+          <span class="fest-hoy">Hoy la web muestra: <b data-fest-hoy>${hoyF.emoji} ${hoyF.nombre}${festHoy?.variante ? ` · diseño ${festHoy.variante}` : ''}${festHoy?.numero ? ` · ${anios(festHoy.numero)}` : ''}</b>${festHoy?.automatico ? ' (automático)' : ''}</span>
+        </div>
+        <p>Elige una festividad y la web cambia al instante: colores, adornos, mensajes y el ícono de la pestaña. Cada festividad tiene 3 diseños.</p>
+        <div class="festividades-grid">
+          ${FESTIVIDADES.map((f) => html`
+            <button type="button" class="festividad" data-fest="${f.id}" aria-pressed="${f.id === aj.tema}">
+              <span class="festividad-emoji" aria-hidden="true">${f.emoji}</span><b>${f.nombre}</b><small>${f.ayuda}</small>
+            </button>`)}
+        </div>
+        ${aj.tema !== 'normal' ? html`
+          <div class="ajuste-fila fest-diseno">
+            <span><b>Diseño</b> · en Automático cada año sale uno distinto</span>
+            <div class="segmentado" role="group" aria-label="Diseño de la festividad">
+              ${[null, 1, 2, 3].map((n) => html`<button type="button" data-variante="${n ?? 'auto'}" aria-pressed="${(aj.tema_variante ?? null) === n}">${n ? `Diseño ${n}` : 'Automático'}</button>`)}
+            </div>
+          </div>` : ''}
+        <div class="aniversario-info">
+          ${aniv ? html`
+            <span>🎂 Aniversario: <b>${aniv.dia} de ${MESES_LARGOS[aniv.mes - 1]}</b>${prox ? html` · ${prox.enCurso ? 'celebrándose ahora' : `el próximo es el ${fechaCorta(prox.fecha)}`}: <b>${anios(prox.numero)}</b>` : ''}.
+              Cada año la web se pone de aniversario sola durante ${DIAS_ANIVERSARIO} días.</span>
+            <button type="button" class="btn btn--borde btn--sm" data-aniv-editar>Cambiar fecha</button>` : html`
+            <span>🎂 Aún no has registrado el aniversario del negocio. Regístralo una vez y cada año la web lo celebra sola.</span>
+            <button type="button" class="btn btn--sm" data-aniv-editar>Registrar aniversario</button>`}
+        </div>
+      </div>`);
+  };
+
+  const guardarFestividad = async (p, mensaje) => {
+    try {
+      const r = await ctx.api.guardarAjustes(p);
+      aj = r;
+      festHoy = r.festividad ?? festHoy;
+      pintarFestividades();
+      avisar(mensaje);
+      return r;
+    } catch (e) {
+      avisar(mensajeError(e), 'error');
+      return null;
+    }
+  };
+
+  const formularioAniversario = (activar) => {
+    const numeroActual = aj.aniversario_fundacion ? Number(hoyEn().slice(0, 4)) - aj.aniversario_fundacion : '';
+    return modal({
+      titulo: aj.aniversario_mes ? 'Cambiar fecha del aniversario' : 'Registrar aniversario',
+      aceptar: activar ? 'Guardar y activar' : 'Guardar',
+      contenido: html`
+        <p>Se registra una sola vez. Desde entonces, cada año, ese día y los ${DIAS_ANIVERSARIO - 1} siguientes la web se pone de aniversario sola, con el número de años correcto.</p>
+        <div class="fila-campos">
+          <label class="campo"><span>Día</span><input name="dia" type="number" min="1" max="31" required value="${aj.aniversario_dia ?? ''}"></label>
+          <label class="campo"><span>Mes</span><select name="mes">${MESES_LARGOS.map((m, i) => html`<option value="${i + 1}" ${aj.aniversario_mes === i + 1 ? 'selected' : ''}>${m}</option>`)}</select></label>
+        </div>
+        <label class="campo"><span>¿Qué número de aniversario cumplen ESTE año?</span>
+          <input name="numero" type="number" min="1" max="200" required value="${numeroActual}">
+          <small>Ejemplo: si abrieron en 2023 y este año cumplen 3 años, escribe 3.</small></label>`,
+      alAbrir: (d) => d.querySelector('[name=dia]').focus(),
+      alAceptar: async (f) => {
+        const dia = Number(f.dia.value);
+        const mes = Number(f.mes.value);
+        const numero = Number(f.numero.value);
+        if (!Number.isInteger(dia) || dia < 1 || dia > 31) throw new Error('Escribe un día entre 1 y 31');
+        if (!Number.isInteger(numero) || numero < 1 || numero > 200) throw new Error('Escribe el número de aniversario (1 o más)');
+        try {
+          const r = await ctx.api.guardarAjustes({ aniversario: { dia, mes, numero }, ...(activar ? { tema: 'aniversario' } : {}) });
+          aj = r;
+          festHoy = r.festividad ?? festHoy;
+        } catch (e) { throw Object.assign(e, { mensajeUsuario: mensajeError(e) }); }
+        pintarFestividades();
+        avisar(activar ? '🎂 ¡La web ya está de aniversario!' : 'Fecha del aniversario guardada');
+        return true;
+      },
+    });
+  };
+
+  pintarFestividades();
+  contenedor.addEventListener('click', async (e) => {
+    const f = e.target.closest('[data-fest]');
+    const v = e.target.closest('[data-variante]');
+    const editar = e.target.closest('[data-aniv-editar]');
+    if (f) {
+      const id = f.dataset.fest;
+      if (id === aj.tema) return;
+      if (id === 'aniversario' && !aj.aniversario_mes) { await formularioAniversario(true); return; }
+      const datos = FESTIVIDADES.find((x) => x.id === id);
+      await guardarFestividad({ tema: id }, id === 'normal' ? 'La web volvió al diseño normal' : `${datos.emoji} La web ahora tiene el tema de ${datos.nombre}`);
+    } else if (v) {
+      const n = v.dataset.variante === 'auto' ? null : Number(v.dataset.variante);
+      await guardarFestividad({ tema_variante: n }, n ? `Diseño ${n} aplicado en la web` : 'Diseño automático');
+    } else if (editar) {
+      await formularioAniversario(false);
+    }
+  });
 
   // ---------- Web activada / desactivada ----------
   let webActiva = a.pedidos_web_activos;
