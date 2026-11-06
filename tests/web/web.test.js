@@ -234,10 +234,21 @@ describe('pedidos desde la web', () => {
     await page.close();
   });
 
-  test('con los pedidos pausados la web lo avisa y no deja enviar', async () => {
+  test('con la web desactivada (local cerrado) no hay ninguna forma de pedir: ni página ni WhatsApp', async () => {
     await ctx.staff('ajustes_guardar', { p: { pedidos_web_activos: false } });
     const { page } = await abrir({ preparar: () => localStorage.setItem('qb_carrito_v1', JSON.stringify({ clasica: 1 })) });
-    await page.waitForFunction(() => !document.querySelector('[data-pausa]').hidden, { timeout: 10000, polling: 100 });
+    await page.waitForFunction(() => !document.querySelector('[data-aviso-cerrado]').hidden, { timeout: 10000, polling: 100 });
+    assert.match(await page.$eval('[data-aviso-cerrado]', (e) => e.textContent), /cerrados/);
+    const visibles = await page.evaluate(() => {
+      const seVe = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+      return {
+        whatsapp: [...document.querySelectorAll('a[href*="wa.me"]')].filter(seVe).length,
+        agregar: [...document.querySelectorAll('[data-inc]')].filter(seVe).length,
+        carrito: [...document.querySelectorAll('.cart-btn, .cart-bar, .wa-float')].filter(seVe).length,
+      };
+    });
+    assert.deepEqual(visibles, { whatsapp: 0, agregar: 0, carrito: 0 });
+    assert.ok(await page.$$eval('.dish', (x) => x.length) > 0, 'el menú se sigue pudiendo ver');
     assert.equal(await page.$eval('[data-enviar]', (b) => b.disabled), true);
     await ctx.staff('ajustes_guardar', { p: { pedidos_web_activos: true } });
     await page.close();

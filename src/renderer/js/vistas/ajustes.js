@@ -1,5 +1,5 @@
 /** Ajustes del negocio y de la app. */
-import { html, pintar, avisar, $ } from '../ui.js';
+import { html, pintar, avisar, confirmar, $ } from '../ui.js';
 import { mensajeError } from '../../../shared/utilidades.js';
 
 export async function montar(contenedor, ctx) {
@@ -11,11 +11,9 @@ export async function montar(contenedor, ctx) {
   pintar(contenedor, html`
     <div class="ajustes">
       <section class="tarjeta"><div class="tarjeta-cuerpo ajuste">
-        <h3>Pedidos en línea</h3>
-        <div class="ajuste-fila">
-          <p>Si el local está lleno o cerrado, pausa los pedidos de la página web. Los clientes verán un aviso y podrán escribir por WhatsApp.</p>
-          <label class="interruptor"><input type="checkbox" data-web ${a.pedidos_web_activos ? 'checked' : ''} aria-label="Recibir pedidos en línea"> <span data-web-texto>${a.pedidos_web_activos ? 'Activos' : 'Pausados'}</span></label>
-        </div>
+        <h3>Página web</h3>
+        <div class="estado-web" data-estado-web></div>
+        <p>Al cerrar el negocio, desactiva la web: los clientes verán que el local está cerrado y no podrán hacer pedidos ni escribir por WhatsApp desde la página. Al abrir, actívala de nuevo.</p>
         <div class="ajuste-fila">
           <p>Sonido cuando llega un pedido nuevo.</p>
           <label class="interruptor"><input type="checkbox" data-sonido ${sonido ? 'checked' : ''} aria-label="Sonido de pedidos"> Sonido</label>
@@ -62,10 +60,34 @@ export async function montar(contenedor, ctx) {
     }
   };
 
-  $('[data-web]', contenedor).addEventListener('change', async (e) => {
-    const ok = await guardar({ pedidos_web_activos: e.target.checked }, e.target.checked ? 'Pedidos en línea activados' : 'Pedidos en línea pausados');
-    if (!ok) e.target.checked = !e.target.checked;
-    $('[data-web-texto]', contenedor).textContent = e.target.checked ? 'Activos' : 'Pausados';
+  // ---------- Web activada / desactivada ----------
+  let webActiva = a.pedidos_web_activos;
+  const pintarEstadoWeb = () => {
+    pintar($('[data-estado-web]', contenedor), html`
+      <div class="estado-web-fila ${webActiva ? 'activa' : 'inactiva'}">
+        <span class="estado-web-punto" aria-hidden="true"></span>
+        <div><b data-web-texto>${webActiva ? 'Web activada' : 'Web desactivada'}</b>
+          <small>${webActiva ? 'Los clientes pueden hacer pedidos por la página y por WhatsApp.' : 'La página muestra "cerrado" y no recibe pedidos.'}</small></div>
+      </div>
+      <button type="button" class="btn btn--lg ${webActiva ? 'btn--peligro' : 'btn--primario'}" data-web>${webActiva ? 'Desactivar web' : 'Activar web'}</button>`);
+  };
+  pintarEstadoWeb();
+  contenedor.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-web]');
+    if (!b) return;
+    const nueva = !webActiva;
+    if (!nueva) {
+      const ok = await confirmar('Desactivar la web',
+        'Los clientes no podrán hacer pedidos ni escribir por WhatsApp desde la página hasta que la vuelvas a activar. ¿Continuar?',
+        { aceptar: 'Desactivar web', peligro: true });
+      if (!ok) return;
+    }
+    b.disabled = true;
+    if (await guardar({ pedidos_web_activos: nueva }, nueva ? 'Web activada: ya se reciben pedidos' : 'Web desactivada: no se reciben pedidos')) {
+      webActiva = nueva;
+      ctx.estadoWeb(webActiva);
+    }
+    pintarEstadoWeb();
   });
   $('[data-sonido]', contenedor).addEventListener('change', (e) => {
     localStorage.setItem('qb-sonido', e.target.checked ? 'on' : 'off');

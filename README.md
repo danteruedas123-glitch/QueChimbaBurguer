@@ -16,7 +16,7 @@ Hecha con **Electron** y conectada a **Supabase** (PostgreSQL), la misma base de
  crear_pedido_web()  ──► registra pedido     Nueva venta (local / WhatsApp)
         └── y abre WhatsApp con el #         Menú: platos, precios, fotos, agotados
                     │                        Contabilidad + PDF (día / semana / mes / rango)
-                    ▼                        Ajustes: pausar pedidos web, destacado, versión mínima
+                    ▼                        Ajustes: web activada/desactivada, destacado, versión mínima
             ┌────────────────┐                        │
             │    SUPABASE    │ ◄──────────────────────┘
             │  PostgreSQL +  │   Toda la lógica de dinero vive en funciones SQL

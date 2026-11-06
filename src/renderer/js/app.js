@@ -177,6 +177,7 @@ function montarShell(perfil) {
           <h1 data-titulo></h1>
           <div class="barra-acciones">
             ${config.modoDemo ? html`<button class="btn btn--borde btn--sm" data-simular>${icono('campana')} Simular pedido web</button>` : ''}
+            <a class="chip-web" href="#ajustes" data-chip-web hidden></a>
             <span class="estado-conexion" data-conexion>Conectando…</span>
           </div>
         </header>
@@ -199,6 +200,7 @@ function montarShell(perfil) {
 
   window.addEventListener('hashchange', () => navegar(location.hash.slice(1)));
   configurarActualizaciones();
+  api.menu().then((m) => ctx.estadoWeb(m.ajustes.pedidos_web_activos)).catch(() => {});
   navegar(location.hash.slice(1) || 'pedidos');
 }
 
@@ -219,6 +221,15 @@ const ctx = {
     el.textContent = { 'en-vivo': config.modoDemo ? 'Demo en vivo' : 'En vivo', caida: 'Sin conexión', conectando: 'Conectando…' }[estado] ?? estado;
   },
   navegar: (id) => { location.hash = id; },
+  /** Indicador en la barra superior: recuerda si la web está recibiendo pedidos. */
+  estadoWeb(activa) {
+    const el = $('[data-chip-web]');
+    if (!el) return;
+    el.hidden = false;
+    el.className = `chip-web ${activa ? 'activa' : 'inactiva'}`;
+    el.textContent = activa ? 'Web activada' : 'Web desactivada';
+    el.title = activa ? 'La web está recibiendo pedidos' : 'La web NO está recibiendo pedidos. Toca para activarla en Ajustes.';
+  },
 };
 
 async function navegar(id) {

@@ -300,6 +300,23 @@ tr.inactivo td { opacity: .55; }
 .alternar-tabla { font-size: 13px; }
 .tabla-datos { max-height: 320px; overflow: auto; }
 
+/* ---------- Web activada / desactivada ---------- */
+.chip-web { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 800; text-decoration: none; }
+.chip-web::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.chip-web.activa { background: #d3f3df; color: #0f5c32; }
+.chip-web.inactiva { background: var(--ketchup); color: #fff; animation: pulso-web 2s infinite; }
+@keyframes pulso-web { 50% { opacity: .75; } }
+.estado-web { display: grid; gap: 12px; }
+.estado-web-fila { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; }
+.estado-web-fila b { display: block; font: 800 24px/1.1 var(--display); font-stretch: 80%; }
+.estado-web-fila small { color: var(--muted); font-size: 13.5px; }
+.estado-web-fila.activa { background: #e6f7ec; }
+.estado-web-fila.inactiva { background: #fde3dd; }
+.estado-web-punto { width: 14px; height: 14px; flex: none; border-radius: 50%; }
+.activa .estado-web-punto { background: var(--green); box-shadow: 0 0 0 4px rgba(31, 157, 85, .2); }
+.inactiva .estado-web-punto { background: var(--ketchup); box-shadow: 0 0 0 4px rgba(217, 52, 24, .2); }
+.estado-web .btn { justify-self: start; }
+
 /* ---------- Ajustes ---------- */
 .ajustes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; max-width: 1100px; }
 .ajuste { display: grid; gap: 14px; }

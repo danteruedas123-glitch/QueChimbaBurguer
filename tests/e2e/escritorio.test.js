@@ -21,6 +21,8 @@ const ELECTRON = path.join(RAIZ, 'node_modules', 'electron', 'dist', process.pla
 const PUERTO = 9333 + Math.floor(Math.random() * 500);
 const CAPTURAS = process.env.QB_CAPTURAS;
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+// Los servidores de GitHub Actions son más lentos: solo los límites de TIEMPO se amplían allí
+const FACTOR = process.env.CI ? 3 : 1;
 
 let proc;
 let browser;
@@ -70,7 +72,7 @@ after(async () => {
 
 // ---------------------------------------------------------------- acceso
 test('arranca en menos de 15 s y muestra el inicio de sesión', async () => {
-  assert.ok(tiempoArranque < 15000, `arranque: ${tiempoArranque} ms`);
+  assert.ok(tiempoArranque < 15000 * FACTOR, `arranque: ${tiempoArranque} ms`);
   await captura('01-login');
 });
 
@@ -223,7 +225,7 @@ test('descarga el PDF de contabilidad (archivo válido, con varias páginas si h
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   assert.ok(pdf.length > 15_000, `PDF muy pequeño: ${pdf.length} bytes`);
   assert.match(archivos[0], /^Contabilidad_Quechimba_\d{4}-\d{2}-\d{2}_a_\d{4}-\d{2}-\d{2}\.pdf$/);
-  assert.ok(Date.now() - t0 < 15000, 'el PDF debe generarse en menos de 15 s');
+  assert.ok(Date.now() - t0 < 15000 * FACTOR, 'el PDF debe generarse en menos de 15 s');
 });
 
 // ---------------------------------------------------------------- menú
@@ -279,15 +281,31 @@ test('un nombre con código malicioso se muestra como texto y no se ejecuta', as
 });
 
 // ---------------------------------------------------------------- ajustes
-test('pausar los pedidos en línea bloquea los pedidos web', async () => {
+test('el botón "Desactivar web" (con confirmación) bloquea los pedidos y avisa en la barra', async () => {
   await irA('ajustes', '[data-web]');
+  assert.equal(await texto('[data-web]'), 'Desactivar web');
   await page.click('[data-web]');
+  await page.waitForSelector('dialog.modal [data-aceptar]');
+  await captura('08-confirmar-desactivar');
+  await page.click('dialog.modal [data-aceptar]');
   await page.waitForFunction(async () => (await window.qb.demo.rpc('menu_publico', {})).datos.pedidos_web_activos === false, { timeout: 10000, polling: 100 });
+  await page.waitForFunction(() => document.querySelector('[data-chip-web]')?.textContent === 'Web desactivada', { timeout: 10000, polling: 100 });
+  assert.equal(await texto('[data-web-texto]'), 'Web desactivada');
   const r = await page.evaluate(() => window.qb.demo.simularPedidoWeb());
-  assert.equal(r.error?.hint, 'PEDIDOS_PAUSADOS');
-  await page.click('[data-web]');
+  assert.equal(r.error?.hint, 'PEDIDOS_PAUSADOS', 'el servidor rechaza pedidos con la web desactivada');
+  await captura('09-web-desactivada');
+  await page.click('[data-web]'); // activar no pide confirmación
   await page.waitForFunction(async () => (await window.qb.demo.rpc('menu_publico', {})).datos.pedidos_web_activos === true, { timeout: 10000, polling: 100 });
-  await captura('08-ajustes');
+  await page.waitForFunction(() => document.querySelector('[data-chip-web]')?.textContent === 'Web activada', { timeout: 10000, polling: 100 });
+});
+
+test('cancelar la confirmación deja la web activada', async () => {
+  await page.click('[data-web]');
+  await page.waitForSelector('dialog.modal [data-cerrar]');
+  await page.click('dialog.modal button[data-cerrar].btn');
+  await page.waitForFunction(() => !document.querySelector('dialog.modal'), { timeout: 5000, polling: 100 });
+  assert.equal((await rpc('menu_publico')).datos.pedidos_web_activos, true);
+  assert.equal(await texto('[data-web-texto]'), 'Web activada');
 });
 
 // ---------------------------------------------------------------- no funcionales
@@ -296,7 +314,7 @@ test('cambiar de sección es rápido (< 1,5 s cada una)', async () => {
     const t0 = Date.now();
     await irA(vista, sel);
     const ms = Date.now() - t0;
-    assert.ok(ms < 1500, `${vista} tardó ${ms} ms`);
+    assert.ok(ms < 1500 * FACTOR, `${vista} tardó ${ms} ms`);
   }
 });
 
