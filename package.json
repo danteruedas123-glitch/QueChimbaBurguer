@@ -1,0 +1,85 @@
+{
+  "name": "quechimba-pedidos",
+  "productName": "Quechimba Pedidos",
+  "version": "1.0.0",
+  "description": "Pedidos, menú y contabilidad de Quechimba Burger",
+  "type": "module",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "test": "node --test --test-concurrency=1 \"tests/unit/*.test.js\" \"tests/db/*.test.js\"",
+    "test:web": "node --test \"tests/web/*.test.js\"",
+    "test:e2e": "node --test \"tests/e2e/*.test.js\"",
+    "test:todo": "npm test && npm run test:web && npm run test:e2e",
+    "build": "electron-builder --win",
+    "release": "electron-builder --win --publish always",
+    "test:mutacion": "node tests/mutacion.mjs",
+    "sql:unificar": "node scripts/unificar-sql.mjs",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@supabase/supabase-js": "^2.119.0",
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "puppeteer-core": "^25.16.0"
+  },
+  "author": {
+    "name": "Halan Santiago"
+  },
+  "build": {
+    "appId": "com.quechimbaburger.pedidos",
+    "productName": "Quechimba Pedidos",
+    "copyright": "Quechimba Burger",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "supabase/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asarUnpack": [
+      "node_modules/@electric-sql/pglite/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Quechimba-Pedidos-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Quechimba Pedidos",
+      "runAfterFinish": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "danteruedas123-glitch",
+        "repo": "QueChimbaBurguer",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

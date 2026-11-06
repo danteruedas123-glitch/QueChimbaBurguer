@@ -1,0 +1,41 @@
+# Publica una versión nueva de Quechimba Pedidos.
+# Se activa al subir una etiqueta de versión:   npm version patch && git push --follow-tags
+# 1) Corre TODAS las pruebas (si algo falla, no se publica nada).
+# 2) Compila el instalador de Windows.
+# 3) Lo sube a GitHub Releases → las apps instaladas se actualizan solas.
+name: Publicar versión
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas unitarias, de base de datos y seguridad
+        run: npm test
+
+      - name: Pruebas de mutación (calidad de las pruebas)
+        run: npm run test:mutacion
+
+      - name: Pruebas end-to-end de la app (modo demo)
+        run: npm run test:e2e
+
+      - name: Compilar y publicar instalador
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
