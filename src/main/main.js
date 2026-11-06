@@ -82,6 +82,10 @@ function crearVentana() {
 
 app.setAppUserModelId('com.quechimbaburger.pedidos');
 
+// Pruebas automáticas: carpeta de datos aislada para no chocar con la app instalada
+// (que solo permite una instancia abierta) ni tocar su configuración.
+if (process.env.QB_USER_DATA) app.setPath('userData', process.env.QB_USER_DATA);
+
 // Una sola instancia: si la abren dos veces, se enfoca la existente
 if (!app.requestSingleInstanceLock()) {
   app.quit();

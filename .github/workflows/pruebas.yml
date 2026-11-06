@@ -21,6 +21,9 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Descargar Electron (npm no siempre lo descarga solo)
+        run: node node_modules/electron/install.js
+
       - name: Pruebas unitarias, de base de datos y seguridad
         run: node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-bd.tap "tests/unit/*.test.js" "tests/db/*.test.js"
 

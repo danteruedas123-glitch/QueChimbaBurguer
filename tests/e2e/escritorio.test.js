@@ -9,6 +9,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,14 +42,18 @@ const irA = async (vista, selector) => {
 };
 
 before(async () => {
+  if (!process.env.QB_EJECUTABLE) {
+    assert.ok(existsSync(ELECTRON), `No está el programa de Electron en ${ELECTRON}. Ejecuta: node node_modules/electron/install.js`);
+  }
   dirPDF = await mkdtemp(path.join(os.tmpdir(), 'qb-pdf-'));
+  const dirDatos = await mkdtemp(path.join(os.tmpdir(), 'qb-datos-'));
   const t0 = Date.now();
   // VS Code define ELECTRON_RUN_AS_NODE en sus terminales internas; hay que quitarla
   const { ELECTRON_RUN_AS_NODE, ...entorno } = process.env;
   // QB_EJECUTABLE permite probar la app YA EMPAQUETADA (ej. dist/win-unpacked/Quechimba Pedidos.exe)
   const exe = process.env.QB_EJECUTABLE;
   proc = spawn(exe ?? ELECTRON, [...(exe ? [] : ['.']), '--demo', `--remote-debugging-port=${PUERTO}`], {
-    cwd: RAIZ, env: { ...entorno, QB_E2E_PDF: dirPDF },
+    cwd: RAIZ, env: { ...entorno, QB_E2E_PDF: dirPDF, QB_USER_DATA: dirDatos },
   });
   // Diagnóstico: lo que Electron escribe y si se cierra antes de tiempo
   let salidaElectron = '';
@@ -56,6 +61,8 @@ before(async () => {
   proc.stdout.on('data', (d) => { salidaElectron += d; });
   proc.stderr.on('data', (d) => { salidaElectron += d; });
   proc.on('exit', (c) => { codigoSalida = c; });
+  proc.on('error', (e) => { codigoSalida = 'no se pudo abrir'; salidaElectron += `
+${e.message}`; });
   const intentos = 80 * FACTOR; // 20 s en tu PC, 60 s en GitHub Actions
   for (let i = 0; i < intentos && !browser && codigoSalida === null; i++) {
     try { browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${PUERTO}`, defaultViewport: null }); } catch { await espera(250); }
