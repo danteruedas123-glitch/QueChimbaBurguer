@@ -1,0 +1,47 @@
+# Corre TODAS las pruebas en cada cambio de la rama "escritorio" (no publica nada).
+# Si algo falla, los errores quedan como anotaciones y las capturas como artefacto.
+name: Pruebas
+
+on:
+  push:
+    branches: [escritorio]
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas unitarias, de base de datos y seguridad
+        run: node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-bd.tap "tests/unit/*.test.js" "tests/db/*.test.js"
+
+      - name: Pruebas de mutación (calidad de las pruebas)
+        run: npm run test:mutacion
+
+      - name: Pruebas end-to-end de la app (modo demo)
+        env:
+          QB_CAPTURAS: ${{ github.workspace }}/capturas
+        run: |
+          New-Item -ItemType Directory -Force capturas | Out-Null
+          node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-e2e.tap "tests/e2e/*.test.js"
+
+      - name: Anotar pruebas fallidas
+        if: failure()
+        run: node tests/anotar-fallos.mjs resultados-bd.tap resultados-e2e.tap
+
+      - name: Guardar capturas de pantalla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-e2e
+          path: capturas/
+          if-no-files-found: ignore
