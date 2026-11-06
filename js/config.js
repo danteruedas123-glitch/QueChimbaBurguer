@@ -32,7 +32,7 @@ window.QB_CONFIG = {
     facebook: '',                        // PENDIENTE · dejar '' para ocultar
     zonaHoraria: 'America/Bogota',
     mensajeWhatsApp: '¡Hola, Quechimba Burger! 🍔 Quiero hacer un pedido.',
-    mediosDePago: ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia'],
+    mediosDePago: ['Nequi', 'Efectivo'], // los únicos que recibe el negocio
     notaDomicilio: '+ valor del domicilio'
   },
 

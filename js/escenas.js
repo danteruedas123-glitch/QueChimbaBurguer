@@ -220,7 +220,7 @@
     let ventanas = '';
     for (let i = 0; x < 1200; i++) {
       const ancho = 40 + azar(i, 3) * 70;
-      const alto = 36 + azar(i, 8) * 84;
+      const alto = x < 600 ? 26 + azar(i, 8) * 42 : 36 + azar(i, 8) * 84;
       edificios += `<rect x="${x.toFixed(0)}" y="${(200 - alto).toFixed(0)}" width="${ancho.toFixed(0)}" height="${alto.toFixed(0)}"/>`;
       for (let k = 0; k < 4; k++) {
         if (azar(i * 7 + k, 4) > .45) ventanas += `<rect class="${azar(i + k, 11) > .8 ? 'titila' : ''}" style="--r:${-k * .8}s" x="${(x + 8 + (k % 2) * (ancho / 2 - 6)).toFixed(0)}" y="${(200 - alto + 12 + Math.floor(k / 2) * 22).toFixed(0)}" width="8" height="10" fill="#fde68a" opacity=".75"/>`;
@@ -361,7 +361,7 @@
   const ESCENAS = {
     calabazas: (v) => ({
       cielo: `${luna()}${rep(3, murcielago)}${niebla()}`,
-      suelo: svg('0 0 1200 200', `${defsCalabaza}${suelo('#0b0710', 54)}${arbolTorcido(1112)}${calabaza(250, .9, 0, 156)}${calabaza(360, .6, 1, 168)}${calabaza(860, .7, 2, 164)}${calabaza(1040, 1.05, 3, 150)}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${defsCalabaza}${suelo('#0b0710', 54)}${arbolTorcido(1112)}${calabaza(250, .7, 0, 168)}${calabaza(360, .55, 1, 172)}${calabaza(860, .7, 2, 164)}${calabaza(1040, 1.05, 3, 150)}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-70 -80 140 130', `${defsCalabaza}${calabaza(0, 1, 0, 0)}`),
     }),
     brujas: () => ({
@@ -371,7 +371,7 @@
     }),
     zombis: () => ({
       cielo: `${luna('#fecaca', 'rgba(248, 113, 113, .35)')}${rep(3, murcielago)}${niebla()}`,
-      suelo: svg('0 0 1200 200', `${suelo('#0d0606', 40)}${lapida(80, 96, 'RIP')}${cruz(190, 84)}${lapida(860, 110, 'RIP')}${lapida(1080, 84, '')}${cruz(990, 92)}`, 'escena-suelo', 'xMidYMax slice') + [260, 420, 560, 700, 960].map((x, i) => actor(x - 20, 110, 80, 90, manoZombi(x, i))).join(''),
+      suelo: svg('0 0 1200 200', `${suelo('#0d0606', 40)}${lapida(80, 72, 'RIP')}${cruz(190, 64)}${lapida(860, 110, 'RIP')}${lapida(1080, 84, '')}${cruz(990, 92)}`, 'escena-suelo', 'xMidYMax slice') + [60, 640, 760, 880, 1000].map((x, i) => actor(x - 20, 110, 80, 90, manoZombi(x, i))).join(''),
       intro: svg('-30 40 190 175', `${lapida(70, 140, 'RIP')}${manoZombi(14, 0)}<ellipse cx="66" cy="204" rx="92" ry="12" fill="#2a1a12"/>`),
     }),
     cupido: (v) => ({
@@ -380,7 +380,7 @@
         <div class="disparo-flecha">${flecha()}</div>`,
       suelo: svg('0 0 1200 200', `${rep(9, (k) => `<g transform="translate(${60 + k * 130} ${150 - (k % 3) * 14}) scale(${2 + (k % 3) * .6})"><path d="${CORAZON}" fill="${k % 2 ? v.c('ketchup') : v.c('mustard')}" opacity=".85" class="late" style="--r:${-k * .3}s"/></g>`)}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-56 -36 112 72', corazonAlado(v.c('ketchup')), 'intro-latido'),
-      figura: svg('-62 -44 124 88', `<g transform="rotate(-18)"><path d="M-60 0H50" stroke="#fde68a" stroke-width="3.2" stroke-linecap="round"/><path d="M-60 0L-70 -8H-56L-48 0-56 8H-70Z" fill="#fb7185"/></g>
+      figura: svg('-80 -52 160 104', `<g transform="rotate(-18)"><path d="M-60 0H50" stroke="#fde68a" stroke-width="3.2" stroke-linecap="round"/><path d="M-60 0L-70 -8H-56L-48 0-56 8H-70Z" fill="#fb7185"/></g>
         <g class="late">${corazonAlado(v.c('ketchup'))}</g>
         <g transform="rotate(-18)"><path d="M14 0H46" stroke="#fde68a" stroke-width="3.2" stroke-linecap="round"/><path d="M44 -8L62 0 44 8Z" fill="#fde68a"/></g>`),
     }),
@@ -393,18 +393,22 @@
     globos: (v) => ({
       cielo: `${rep(6, (i) => (i % 2 ? globo(i, [v.c('mustard'), v.c('ketchup'), '#fde68a'][i % 3]) : globoCorazon(i, [v.c('ketchup'), v.c('mustard')][i % 2])))}${particulas('confeti', 18, [v.c('mustard'), v.c('ketchup'), '#fde047', '#fff7ea'])}`,
       suelo: svg('0 0 1200 200', `${regalo(60, 70, 60, v.c('ketchup'), v.c('mustard'))}${regalo(140, 50, 44, v.c('mustard'), v.c('ketchup'))}${regalo(1040, 80, 66, v.c('promo'), '#fde047')}${regalo(1130, 50, 40, v.c('ketchup'), '#fff7ea')}`, 'escena-suelo', 'xMidYMax slice'),
-      intro: svg('-20 -26 40 116', `<ellipse rx="17" ry="21" fill="${v.c('ketchup')}"/><path d="M-3 20L0 14 3 20Z" fill="${v.c('ketchup')}"/><path d="M0 22C6 38-6 54 0 70" stroke="#fff" stroke-width="1.5" fill="none"/>`, 'intro-latido'),
+      intro: svg('-62 -48 124 118', `<g stroke="#fff7ea" stroke-width="1.4" fill="none" opacity=".8"><path d="M-30 0C-24 24-6 40 0 58"/><path d="M0 -6C-4 20 4 40 0 58"/><path d="M30 0C24 24 6 40 0 58"/></g>
+        <path d="M-6 56L0 60 6 56 4 66 0 62-4 66Z" fill="${v.c('mustard')}"/>
+        <ellipse cx="-30" cy="-16" rx="22" ry="27" fill="${v.c('mustard')}"/><ellipse cx="-37" cy="-27" rx="5" ry="9" fill="#fff" opacity=".35"/>
+        <ellipse cx="30" cy="-16" rx="22" ry="27" fill="#fde68a"/><ellipse cx="23" cy="-27" rx="5" ry="9" fill="#fff" opacity=".35"/>
+        <path d="${CORAZON}" transform="translate(-26 -48) scale(2.15)" fill="${v.c('ketchup')}"/><ellipse cx="-10" cy="-30" rx="4" ry="7" fill="#fff" opacity=".35" transform="rotate(-30 -10 -30)"/>`, 'intro-latido'),
     }),
     rosas: (v) => ({
       cielo: `${particulas('petalo', 18, [v.c('ketchup'), v.c('mustard'), '#fbcfe8'])}`,
-      suelo: svg('0 0 1200 200', `${defsFresa}${rosa(70, 160, 1.5, v.c('ketchup'), v.c('ketchup2'))}${rosa(150, 182, 1.05, v.c('mustard'), v.c('ketchup'))}${rosa(30, 192, .9, v.c('mustard'), v.c('ketchup2'))}
+      suelo: svg('0 0 1200 200', `${defsFresa}${rosa(70, 170, 1.2, v.c('ketchup'), v.c('ketchup2'))}${rosa(150, 184, .95, v.c('mustard'), v.c('ketchup'))}${rosa(30, 192, .9, v.c('mustard'), v.c('ketchup2'))}
         ${fresa(230, 182, 1.3, -15)}${fresa(268, 190, 1, 18)}${fresa(950, 186, 1.2, 12)}
         ${rosa(1130, 160, 1.5, v.c('ketchup'), v.c('ketchup2'))}${rosa(1050, 184, 1.05, v.c('mustard'), v.c('ketchup'))}${rosa(1176, 192, .9, v.c('mustard'), v.c('ketchup2'))}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-80 -50 160 120', `${rosa(0, 0, 1.62, v.c('ketchup'), v.c('ketchup2'))}`),
     }),
     lavanda: (v) => ({
       cielo: `${rep(3, mariposa)}${particulas('petalo', 10, ['#c4b5fd', '#e9d5ff', v.c('ketchup')])}`,
-      suelo: svg('0 0 1200 200', `${defsFresa}${rep(9, (k) => lavanda(30 + k * 18, 70 + (k % 3) * 22, k))}${rep(9, (k) => lavanda(1010 + k * 18, 70 + (k % 3) * 22, k + 3))}${fresa(220, 186, 1.2, -10)}${fresa(980, 188, 1.1, 14)}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${defsFresa}${rep(9, (k) => lavanda(30 + k * 18, 46 + (k % 3) * 12, k))}${rep(9, (k) => lavanda(1010 + k * 18, 70 + (k % 3) * 22, k + 3))}${fresa(220, 186, 1.2, -10)}${fresa(980, 188, 1.1, 14)}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-24 -20 48 40', `<ellipse cx="-11" cy="-6" rx="11" ry="9" fill="#c4b5fd"/><ellipse cx="-9" cy="8" rx="7" ry="6" fill="#a78bfa"/><g transform="scale(-1 1)"><ellipse cx="-11" cy="-6" rx="11" ry="9" fill="#c4b5fd"/><ellipse cx="-9" cy="8" rx="7" ry="6" fill="#a78bfa"/></g><rect x="-1.5" y="-12" width="3" height="24" rx="1.5" fill="#3b0764"/>`, 'intro-latido'),
     }),
     pastel: (v, n) => ({
@@ -414,17 +418,17 @@
     }),
     pinos: () => ({
       cielo: `${particulas('copo', 34, ['#ffffff', '#e0f2fe'])}`,
-      suelo: svg('0 0 1200 200', `${suelo('#f8fafc', 34)}${pino(60, .62, 0)}${pino(150, .78, 1, true)}${pino(235, .55, 2)}${pino(950, .8, 3)}${pino(1060, 1.2, 4, true)}${pino(1150, .85, 5)}${regalo(320, 46, 34, '#dc2626', '#fde047')}${regalo(880, 40, 30, '#16a34a', '#fde047')}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${suelo('#f8fafc', 34)}${pino(60, .44, 0)}${pino(140, .5, 1, true)}${pino(215, .38, 2)}${pino(950, .8, 3)}${pino(1060, 1.2, 4, true)}${pino(1150, .85, 5)}${regalo(320, 46, 34, '#dc2626', '#fde047')}${regalo(880, 40, 30, '#16a34a', '#fde047')}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-70 -170 140 180', pino(0, 1, 0, true).replace('translate(0 200)', 'translate(0 0)')),
     }),
     muneco: () => ({
       cielo: `${particulas('copo', 44, ['#ffffff', '#e0f2fe'])}`,
-      suelo: svg('0 0 1200 200', `${suelo('#f8fafc', 40)}${pino(80, .7, 0, true)}${pino(170, .52, 1)}${regalo(240, 44, 32, '#dc2626', '#fde047')}${pino(980, .9, 2)}${pino(1080, 1.15, 3, true)}${regalo(1150, 40, 30, '#2563eb', '#fde047')}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${suelo('#f8fafc', 40)}${pino(80, .48, 0, true)}${pino(160, .38, 1)}${regalo(240, 44, 32, '#dc2626', '#fde047')}${pino(980, .9, 2)}${pino(1080, 1.15, 3, true)}${regalo(1150, 40, 30, '#2563eb', '#fde047')}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('-70 -210 140 220', munecoNieve().replace('translate(1030 200)', 'translate(0 0)')),
     }),
     trineo: () => ({
       cielo: `${luna()}<div class="vuelo-trineo">${trineo()}</div>${particulas('copo', 26, ['#ffffff'])}`,
-      suelo: svg('0 0 1200 200', `${suelo('#e2e8f0', 36)}${pino(80, .7, 0, true)}${pino(1100, 1, 1, true)}${regalo(180, 50, 40, '#b91c1c', '#fcd34d')}${regalo(990, 46, 36, '#15803d', '#fcd34d')}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${suelo('#e2e8f0', 36)}${pino(80, .48, 0, true)}${pino(1100, 1, 1, true)}${regalo(180, 50, 40, '#b91c1c', '#fcd34d')}${regalo(990, 46, 36, '#15803d', '#fcd34d')}`, 'escena-suelo', 'xMidYMax slice'),
       intro: `<div class="intro-luna">${luna()}<div class="intro-trineo">${trineo()}</div></div>`,
     }),
     fuegos: (v) => ({
@@ -442,11 +446,11 @@
       cielo: `${particulas('petalo-cempasuchil', 34, ['#f97316', '#fb923c', '#fbbf24'])}`,
       suelo: svg('0 0 1200 200', `${defsLlama}${rep(14, (k) => cempasuchil(20 + k * 44, 186 - (k % 2) * 10, 1.1))}${rep(10, (k) => cempasuchil(760 + k * 46, 186 - (k % 2) * 10, 1.1))}`, 'escena-suelo', 'xMidYMax slice')
         + rep(3, (k) => actor(624 + k * 40, 132, 32, 68, velaSuelo(640 + k * 40, k))),
-      intro: svg('-30 -30 60 60', cempasuchil(0, 0, 1.8)),
+      intro: svg('-38 -38 76 76', cempasuchil(0, 0, 1.8)),
     }),
     acordeon: (v) => ({
       cielo: `<div class="pieza-sol-cielo">${svg('-120 -120 240 240', `<defs><radialGradient id="qb-halo"><stop offset="0" stop-color="rgba(250,204,21,.4)"/><stop offset="1" stop-color="rgba(250,204,21,0)"/></radialGradient></defs><circle r="118" fill="url(#qb-halo)"/>`)}${sol()}</div>${rep(8, nota)}`,
-      suelo: svg('0 0 1200 200', `${suelo('#05140e', 44)}${palmera(60, .78, 0)}${palmera(150, .58, 1)}`, 'escena-suelo', 'xMidYMax slice'),
+      suelo: svg('0 0 1200 200', `${suelo('#05140e', 44)}${palmera(60, .46, 0)}${palmera(140, .36, 1)}`, 'escena-suelo', 'xMidYMax slice'),
       intro: svg('966 56 260 146', acordeon()),
     }),
     bandera: (v) => ({
@@ -503,10 +507,10 @@
     return `<path class="gota" style="--r:${-k * .6}s;--d:${3 + azar(k, 1) * 3}s" d="M${x.toFixed(1)} 4h${w.toFixed(1)}v${largo.toFixed(1)}a${(w / 2).toFixed(1)} ${(w / 2).toFixed(1)} 0 0 1 -${w.toFixed(1)} 0z"/>`;
   })}`, 'titulo-gotas', 'none');
   const gorroNieve = () => svg('0 0 300 34', `<path d="M2 30C0 18 10 10 22 14 26 4 44 2 52 10 60 2 78 2 84 12 92 4 112 4 118 14 128 6 146 6 150 14 160 4 180 4 186 14 196 6 214 6 220 14 230 4 250 4 256 14 266 6 284 8 288 18 298 18 300 26 298 30Z" fill="#f8fafc"/><path d="M40 30V38M90 30V42M150 30V36M210 30V44M262 30V38" stroke="#e0f2fe" stroke-width="5" stroke-linecap="round"/>`, 'titulo-nieve', 'none');
-  const destellos = (color) => `<span class="titulo-destellos">${rep(5, (k) => `<i style="${estilo({ left: `${[2, 30, 62, 88, 46][k]}%`, top: `${[-28, -40, -30, -18, 76][k]}%`, '--r': `${-k * .45}s` })}">${svg('-11 -11 22 22', `<path d="${ESTRELLA}" fill="${color}"/>`)}</i>`)}</span>`;
+  const destellos = (color) => `<span class="titulo-destellos">${rep(5, (k) => `<i style="${estilo({ left: `${[3, 28, 54, 80, 76][k]}%`, top: `${[96, 102, 96, 102, 34][k]}%`, '--r': `${-k * .45}s` })}">${svg('-11 -11 22 22', `<path d="${ESTRELLA}" fill="${color}"/>`)}</i>`)}</span>`;
   const corazoncitos = (color) => `<span class="titulo-corazones">${rep(5, (k) => `<i style="${estilo({ left: `${8 + k * 20}%`, '--r': `${-k * .7}s`, '--t': `${.7 + (k % 3) * .2}` })}">${svg('0 0 24 24', `<path d="${CORAZON}" fill="${color}"/>`)}</i>`)}</span>`;
   const corona = () => svg('-40 -30 80 40', `<path d="M-34 6L-38-22-18-6 0-28 18-6 38-22 34 6Z" fill="#fcd34d" stroke="#b45309" stroke-width="2"/><circle cx="0" cy="-28" r="4" fill="#ef4444"/><circle cx="-38" cy="-22" r="3.4" fill="#38bdf8"/><circle cx="38" cy="-22" r="3.4" fill="#38bdf8"/><rect x="-34" y="2" width="68" height="7" rx="2" fill="#f59e0b"/>`, 'titulo-corona');
-  const florTitulo = () => `<span class="titulo-flor">${svg('-30 -30 60 60', cempasuchil(0, 0, 2.2))}</span>`;
+  const florTitulo = () => `<span class="titulo-flor">${svg('-46 -46 92 92', cempasuchil(0, 0, 2.2))}</span>`;
 
   const TITULOS = {
     halloween: () => gotas(),
@@ -541,11 +545,13 @@
       const colorPatron = vv.c(['notas', 'copos', 'estrellas'].includes(v.patron) ? 'promo' : 'ketchup');
       const esSvg = typeof e.intro === 'string' && e.intro.startsWith('<svg');
       return {
-        guirnalda: GUIRNALDAS[v.guirnalda] ? `<div class="capa-guirnalda">${GUIRNALDAS[v.guirnalda](vv)}</div>` : '',
+        guirnalda: v.guirnalda === 'telaranas'
+          ? `<div class="capa-guirnalda">${GUIRNALDAS.telaranas(vv)}</div>`
+          : GUIRNALDAS[v.guirnalda] ? `<div class="capa-guirnalda capa-guirnalda--tira" style="background-image:${uri(GUIRNALDAS[v.guirnalda](vv).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}"></div>` : '',
         cielo: `<div class="capa-cielo">${e.cielo}</div>`,
         suelo: `<div class="capa-suelo capa-suelo--${v.escena}">${e.suelo}</div>`,
         intro: e.intro,
-        figura: e.figura ?? (esSvg ? e.intro : ''),
+        figura: (e.figura ?? (esSvg ? e.intro : '')).replace('preserveAspectRatio="xMidYMid meet"', 'preserveAspectRatio="xMidYMax meet"'),
         titulo: TITULOS[tema] ? TITULOS[tema](vv) : '',
         borde: BORDES[tema] ? BORDES[tema]() : '',
         patron: PATRONES[v.patron] ? uri(PATRONES[v.patron](colorPatron)) : 'none',

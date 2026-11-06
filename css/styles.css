@@ -270,8 +270,9 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .decoracion { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; user-select: none; }
 .decoracion svg, .hero-figura svg, .menu-figura svg, .titulo-extra svg, .bienvenida svg { overflow: visible; }
-.capa-guirnalda { position: absolute; top: 0; left: 0; right: 0; height: clamp(54px, 8vw, 112px); }
+.capa-guirnalda { position: absolute; top: 0; left: 0; right: 0; height: clamp(44px, 5.6vw, 76px); }
 .capa-guirnalda .guirnalda { width: 100%; height: 100%; }
+.capa-guirnalda--tira { background: center top / auto 100% repeat-x; }
 .capa-cielo { position: absolute; inset: 0; }
 .capa-suelo { position: absolute; left: 0; right: 0; bottom: 0; aspect-ratio: 6 / 1; }
 .capa-suelo .escena-suelo { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
@@ -286,7 +287,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .pieza-sol-cielo { position: absolute; top: 3%; left: 41%; width: clamp(110px, 13vw, 200px); aspect-ratio: 1; }
 .pieza-sol-cielo > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .pieza-sol-cielo > svg + svg { animation: spin 40s linear infinite; }
-.pieza-calavera-cielo { position: absolute; top: 6%; left: 43%; width: clamp(80px, 10vw, 150px); filter: drop-shadow(0 0 18px rgba(244, 114, 182, .55)); animation: flotar-suave 6s ease-in-out infinite; }
+.pieza-calavera-cielo { position: absolute; top: 3%; left: 43%; width: clamp(70px, 8vw, 120px); filter: drop-shadow(0 0 18px rgba(244, 114, 182, .55)); animation: flotar-suave 6s ease-in-out infinite; }
 .pieza-calavera-cielo svg { width: 100%; height: auto; }
 .pieza-flor-cielo { filter: drop-shadow(0 0 22px rgba(251, 146, 60, .6)); animation: spin 30s linear infinite; }
 
@@ -347,10 +348,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .burbuja { transform-box: fill-box; animation: burbuja var(--d, 2.4s) ease-in var(--r, 0s) infinite; }
 @keyframes burbuja { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-46px) scale(.6); opacity: 0; } }
-.telarana { position: absolute; top: 0; width: clamp(110px, 17vw, 230px); height: auto; }
+.telarana { position: absolute; top: 0; width: clamp(90px, 11vw, 160px); height: auto; }
+.telarana-izq { width: clamp(70px, 7vw, 110px); }
 .telarana-izq { left: 0; }
 .telarana-der { right: 0; }
-.arana { position: absolute; top: 0; left: 24%; width: clamp(20px, 2vw, 30px); transform-origin: 50% 0; animation: arana 7s ease-in-out infinite; }
+.arana { position: absolute; top: 0; left: 50%; width: clamp(20px, 2vw, 30px); transform-origin: 50% 0; animation: arana 7s ease-in-out infinite; }
 .arana svg { width: 100%; height: auto; }
 @keyframes arana { 0%, 100% { transform: translateY(-45%); } 40%, 60% { transform: translateY(0) rotate(4deg); } 50% { transform: translateY(0) rotate(-4deg); } }
 
@@ -426,7 +428,8 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* Figura grande junto a la hamburguesa (pastel, calabaza, rosas, corazón…) */
 .hero-figura { position: absolute; right: -9%; bottom: -5%; z-index: 2; width: 38%; pointer-events: none; animation: figura-entra .9s cubic-bezier(.3, 1.5, .5, 1) .3s both; }
-.hero-figura > svg { width: 100%; height: auto; animation: flotar-suave 5s ease-in-out 1.2s infinite; }
+.hero-figura { aspect-ratio: 1; }
+.hero-figura > svg { width: 100%; height: 100%; animation: flotar-suave 5s ease-in-out 1.2s infinite; }
 :root[data-tema="aniversario"] .hero-figura { width: 50%; right: -15%; bottom: -3%; }
 @keyframes figura-entra { from { transform: translateY(40px) scale(.4) rotate(-12deg); opacity: 0; } }
 @keyframes flotar-suave { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-10px) rotate(2deg); } }
@@ -442,7 +445,8 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .titulo-gotas { left: 1%; top: 84%; width: 98%; height: .5em; fill: var(--mustard); }
 .gota { transform-box: fill-box; transform-origin: 50% 0; animation: gota var(--d, 4s) ease-in-out var(--r, 0s) infinite alternate; }
 @keyframes gota { from { transform: scaleY(.45); } to { transform: scaleY(1.15); } }
-.titulo-nieve { left: -3%; top: -.1em; width: 106%; height: .26em; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3)); }
+:root[data-tema="navidad"] .hero h1 em > svg { display: none; }
+.titulo-nieve { left: 0; top: 80%; width: 100%; height: .3em; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3)); }
 :root[data-tema="aniversario"] .hero h1 em, :root[data-tema="festival_vallenato"] .hero h1 em {
   background: linear-gradient(100deg, var(--mustard) 0%, #fff7d6 18%, var(--mustard) 34%, #f59e0b 60%, var(--mustard) 100%) 0 0 / 250% 100%;
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
@@ -455,10 +459,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .titulo-destellos i { width: .22em; animation: destello-titulo 2.2s ease-in-out var(--r, 0s) infinite; }
 .titulo-destellos svg, .titulo-corazones svg { position: static; width: 100%; height: auto; }
 @keyframes destello-titulo { 0%, 100% { transform: scale(0) rotate(0); } 50% { transform: scale(1) rotate(90deg); } }
-.titulo-corazones i { bottom: 78%; width: calc(.2em * var(--t, 1)); opacity: 0; animation: corazoncito 3.2s ease-out var(--r, 0s) infinite; }
-@keyframes corazoncito { 0% { transform: translateY(0) scale(.5); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-1.1em) translateX(.15em) scale(1); opacity: 0; } }
-.titulo-corona { left: -.16em; top: -.26em; width: .52em; height: .26em; transform: rotate(-16deg); filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .4)); }
-.titulo-flor { position: absolute; right: -.34em; top: -.3em; width: .58em; animation: spin 14s linear infinite; }
+.titulo-corazones i { bottom: 6%; width: calc(.2em * var(--t, 1)); opacity: 0; animation: corazoncito 3.2s ease-out var(--r, 0s) infinite; }
+@keyframes corazoncito { 0% { transform: translateY(0) scale(.5); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-.5em) translateX(.12em) scale(1); opacity: 0; } }
+.titulo-corona { left: auto; right: .02em; top: 74%; width: .42em; height: .22em; transform: rotate(-12deg); filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .4)); }
+.titulo-flor { position: absolute; right: .02em; top: 66%; width: .36em; animation: spin 14s linear infinite; }
 .titulo-flor svg { position: static; width: 100%; height: auto; }
 
 /* El menú también se viste */
@@ -472,13 +476,13 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .borde-hielo { filter: drop-shadow(0 2px 2px rgba(30, 64, 175, .25)); }
 .borde-hielo path { fill: #bfdbfe; }
 .section-head { position: relative; }
-.menu-figura { display: block; width: clamp(70px, 9vw, 110px); margin: 0 auto 6px; filter: drop-shadow(0 10px 12px rgba(27, 21, 17, .25)); }
-.menu-figura > svg { width: 100%; height: auto; animation: flotar-suave 4.5s ease-in-out infinite; }
+.menu-figura { display: block; width: clamp(70px, 9vw, 110px); aspect-ratio: 1; margin: 0 auto 6px; filter: drop-shadow(0 10px 12px rgba(27, 21, 17, .25)); }
+.menu-figura > svg { width: 100%; height: 100%; animation: flotar-suave 4.5s ease-in-out infinite; }
 .menu-figura svg * { animation: none !important; }
 :root[data-tema] .section-head h2 { color: var(--ink); text-shadow: 3px 3px 0 color-mix(in srgb, var(--mustard) 55%, transparent); }
 .cat { position: relative; }
 :root[data-tema] .cat::after { content: ''; position: absolute; top: -12px; right: 54px; width: 42px; height: 42px; background: var(--ornamento, none) center / contain no-repeat; transform: rotate(12deg); pointer-events: none; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .18)); }
-:root[data-tema="halloween"] .cat::after { top: 0; right: 0; width: 76px; height: 76px; transform: none; opacity: .55; filter: none; border-top-right-radius: 22px; }
+:root[data-tema="halloween"] .cat::after { top: -18px; right: -18px; width: 46px; height: 46px; transform: none; opacity: .7; filter: none; }
 :root[data-tema] .cat[open] { box-shadow: 0 0 0 2px var(--ketchup), var(--shadow); }
 :root[data-tema] .dish:hover { box-shadow: 0 0 0 2px var(--ketchup), 0 18px 34px -18px color-mix(in srgb, var(--ketchup) 70%, transparent); }
 :root[data-tema="halloween"] .dish:hover .dish-media img { animation: susto .5s ease-in-out; }
@@ -507,14 +511,17 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .intro-bandera .bandera-ondea { height: 100%; }
 .intro-latido { animation: late 1.4s ease-in-out infinite; }
 
+@media (max-width: 860px) {
+  /* Una sola columna: los datos quedan abajo, encima de la escena del suelo */
+  :root[data-tema] .hero-inner { padding-bottom: calc(clamp(48px, 7vw, 88px) + 14vw); }
+}
 @media (max-width: 760px) {
   :root { --caida: 190vh; }
   .pieza-luna, .pieza-sol-cielo, .pieza-calavera-cielo { left: auto; right: -24px; top: 1%; width: 120px; opacity: .55; }
   .particula:nth-child(n + 13) { display: none; }
-  .arana { left: 70%; }
   .hero-figura { right: -4%; bottom: -8%; width: 34%; }
   :root[data-tema] .cat::after { right: 48px; width: 32px; height: 32px; }
-  :root[data-tema="halloween"] .cat::after { width: 56px; height: 56px; right: 0; }
+  :root[data-tema="halloween"] .cat::after { width: 36px; height: 36px; top: -18px; right: -16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
