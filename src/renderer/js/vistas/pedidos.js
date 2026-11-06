@@ -7,7 +7,7 @@
 import { html, icono, pintar, avisar, modal, sonarNuevoPedido, agrupar, $ } from '../ui.js';
 import { formatearCOP, parsearCOP } from '../../../shared/dinero.js';
 import { hoyEn, sumarDias, horaLocal } from '../../../shared/periodos.js';
-import { siguienteEstado, ETIQUETA_CANAL, ETIQUETA_ENTREGA, ETIQUETA_PAGO, ETIQUETA_ESTADO } from '../../../shared/estados.js';
+import { siguienteEstado, ETIQUETA_CANAL, ETIQUETA_ENTREGA, ETIQUETA_PAGO, ETIQUETA_ESTADO, PAGOS_ACTIVOS } from '../../../shared/estados.js';
 import { mensajeError } from '../../../shared/utilidades.js';
 
 const ACCION = { nuevo: 'Empezar a preparar', preparando: 'Marcar listo', listo: 'Entregar' };
@@ -175,7 +175,7 @@ function editarCobro(ctx, p, { titulo = `Cobro del pedido ${numeroPedido(p.numer
         <label class="campo"><span>Descuento</span><input name="descuento" inputmode="numeric" value="${p.descuento || ''}" placeholder="0"></label>
       </div>
       <label class="campo"><span>Método de pago</span>
-        <select name="pago">${Object.entries(ETIQUETA_PAGO).map(([v, t]) => html`<option value="${v}" ${v === p.metodo_pago ? 'selected' : ''}>${t}</option>`)}</select>
+        <select name="pago">${[...new Set([...PAGOS_ACTIVOS, p.metodo_pago])].map((v) => html`<option value="${v}" ${v === p.metodo_pago ? 'selected' : ''}>${ETIQUETA_PAGO[v]}</option>`)}</select>
       </label>
       <p>Total a cobrar: <b class="num" data-total>${formatearCOP(p.total)}</b></p>`,
     alAbrir: (d) => {

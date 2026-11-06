@@ -15,10 +15,13 @@ export const ETIQUETA_ESTADO = {
 
 export const ETIQUETA_CANAL = { web: 'Web', whatsapp: 'WhatsApp', local: 'Local' };
 export const ETIQUETA_ENTREGA = { domicilio: 'Domicilio', recoger: 'Recoger', en_local: 'En el local' };
+/** Nombres de TODOS los métodos (los pedidos viejos pueden tener cualquiera). */
 export const ETIQUETA_PAGO = {
   efectivo: 'Efectivo', nequi: 'Nequi', daviplata: 'Daviplata',
   transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro',
 };
+/** Métodos que el negocio recibe hoy (la base de datos rechaza los demás en pedidos nuevos). */
+export const PAGOS_ACTIVOS = ['nequi', 'efectivo'];
 
 export function transicionValida(desde, hacia) {
   if (!ESTADOS.includes(desde) || !ESTADOS.includes(hacia)) return false;

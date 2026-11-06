@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { buscarChoques } from './choques.js';
 import { nuevaBase } from '../helpers/bd.js';
 import { FESTIVIDADES } from '../../src/shared/festividades.js';
 
@@ -446,7 +447,8 @@ describe('festividades', () => {
           if (!catalogo.ornamentos.includes(v.ornamento)) mal.push(`${id}: ornamento "${v.ornamento}" no existe`);
           window.QB_aplicarTema({ tema, variante: i + 1, numero: 7 });
           const d = document.querySelector('.decoracion');
-          if (!d.querySelector('.capa-guirnalda svg')) mal.push(`${id}: sin guirnalda`);
+          const g = d.querySelector('.capa-guirnalda');
+          if (!g || (!g.querySelector('svg') && !getComputedStyle(g).backgroundImage.startsWith('url('))) mal.push(`${id}: sin guirnalda`);
           if (!d.querySelector('.capa-cielo')?.children.length) mal.push(`${id}: cielo vacío`);
           if (!d.querySelector('.capa-suelo')?.children.length) mal.push(`${id}: suelo vacío`);
         });
@@ -458,6 +460,19 @@ describe('festividades', () => {
     assert.deepEqual(malos, []);
     assert.deepEqual(avisos, [], 'todos los dibujos SVG son válidos');
     assert.deepEqual(errores, []);
+    await page.close();
+  });
+
+  test('nada tapa nada: los 30 diseños en celular, tableta, portátil y pantalla grande', async () => {
+    const { page } = await abrir();
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]); // todo en reposo
+    await page.evaluate(() => document.querySelector('.cat')?.setAttribute('open', ''));
+    const choques = [];
+    for (const [ancho, alto, movil] of [[360, 740, true], [390, 844, true], [768, 1024, true], [1280, 860, false], [1920, 1080, false]]) {
+      await page.setViewport({ width: ancho, height: alto, isMobile: movil, hasTouch: movil });
+      (await page.evaluate(buscarChoques)).forEach((c) => choques.push(`${ancho}x${alto} · ${c}`));
+    }
+    assert.deepEqual(choques, []);
     await page.close();
   });
 
@@ -536,6 +551,14 @@ describe('festividades', () => {
       };
     });
     assert.deepEqual(r, { botonAlcanzable: true, animados: 0, voladores: 0, elementos: true });
+    await page.close();
+  });
+});
+
+describe('forma de pago', () => {
+  test('el cliente solo puede elegir Nequi o Efectivo', async () => {
+    const { page } = await abrir();
+    assert.deepEqual(await page.$$eval('[name=pago] option', (os) => os.map((o) => o.textContent)), ['Nequi', 'Efectivo']);
     await page.close();
   });
 });

@@ -26,7 +26,7 @@ before(async () => {
       for i in 1..${PEDIDOS} loop
         insert into public.pedidos (canal, tipo_entrega, metodo_pago, creado_en)
         values ((array['web','whatsapp','local'])[1 + i % 3]::public.canal_pedido, 'en_local',
-                (array['efectivo','nequi','daviplata','transferencia'])[1 + i % 4]::public.metodo_pago,
+                (array['efectivo','nequi'])[1 + i % 2]::public.metodo_pago,
                 now() - (i * interval '52 minutes'))
         returning id into v_id;
         k := 1 + (i * 7) % v_n;

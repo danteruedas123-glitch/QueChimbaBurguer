@@ -39,7 +39,7 @@ begin
       values (
         (array['web','whatsapp','local','local'])[1 + floor(random() * 4)::int]::public.canal_pedido,
         v_ent,
-        (array['efectivo','efectivo','nequi','nequi','daviplata','transferencia'])[1 + floor(random() * 6)::int]::public.metodo_pago,
+        (array['efectivo','efectivo','efectivo','nequi','nequi','nequi'])[1 + floor(random() * 6)::int]::public.metodo_pago,
         case when v_ent = 'domicilio' then (array[3000,4000,5000])[1 + floor(random() * 3)::int] else 0 end,
         v_ts,
         nombres[1 + floor(random() * 10)::int],

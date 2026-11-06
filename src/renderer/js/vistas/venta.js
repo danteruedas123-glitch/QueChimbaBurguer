@@ -4,7 +4,7 @@
  */
 import { html, icono, pintar, avisar, $ } from '../ui.js';
 import { formatearCOP, parsearCOP } from '../../../shared/dinero.js';
-import { ETIQUETA_PAGO } from '../../../shared/estados.js';
+import { ETIQUETA_PAGO, PAGOS_ACTIVOS } from '../../../shared/estados.js';
 import { calcularTicket, mensajeError } from '../../../shared/utilidades.js';
 import { urlFoto } from '../datos.js';
 import { numeroPedido } from './pedidos.js';
@@ -49,7 +49,7 @@ export async function montar(contenedor, ctx) {
             <button type="button" data-valor="recoger">Recoger</button>
             <button type="button" data-valor="domicilio">Domicilio</button></div></div>
           <label class="campo"><span>Método de pago</span><select data-pago>
-            ${Object.entries(ETIQUETA_PAGO).map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select></label>
+            ${PAGOS_ACTIVOS.map((v) => html`<option value="${v}" ${v === 'efectivo' ? 'selected' : ''}>${ETIQUETA_PAGO[v]}</option>`)}</select></label>
           <div class="fila-campos">
             <label class="campo"><span>Cliente <em>(opcional)</em></span><input data-cliente maxlength="60"></label>
             <label class="campo"><span>Teléfono <em>(opcional)</em></span><input data-telefono maxlength="20" inputmode="tel"></label>
