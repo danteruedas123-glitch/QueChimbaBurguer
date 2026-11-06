@@ -23,7 +23,7 @@
   --char-3: #2e241c;
   --mustard: #ffb703;
   --mustard-2: #ffc93c;
-  --ketchup: #d93418;
+  --ketchup: #d33216; /* rojo de la marca (contraste AA sobre crema) */
   --ketchup-2: #c42d12;
   --wa: #1fae5b;
   --wa-2: #178f4a;
@@ -45,6 +45,10 @@
   /* Espacio para la etiqueta "Powered by Netlify" que el plan gratis pone abajo a la derecha.
      Si se cambia de plan o de hosting y la etiqueta desaparece, poner 0px. */
   --hosting-etiqueta: 56px;
+  /* Colores que cambian con cada festividad (los define js/temas.js) */
+  --promo-bg: var(--ketchup);
+  --brillo: rgba(255, 183, 3, .28);
+  --cinta-bg: var(--ketchup);
 }
 
 /* ---------- 2. Base ---------- */
@@ -115,7 +119,9 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .site-header { position: sticky; top: 0; z-index: 40; height: var(--header-h); color: var(--cream); background: rgba(23, 18, 14, .92); backdrop-filter: saturate(140%) blur(12px); -webkit-backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid transparent; transition: border-color .3s, box-shadow .3s; }
 .site-header.is-scrolled { border-color: var(--line-light); box-shadow: 0 10px 30px -18px rgba(0, 0, 0, .6); }
 .header-inner { height: 100%; display: flex; align-items: center; gap: 28px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+.brand { position: relative; display: inline-flex; align-items: center; gap: 10px; flex: none; }
+/* Calcomanía de la festividad sobre el logo */
+.brand-sticker { position: absolute; top: -10px; left: 30px; font-size: 22px; line-height: 1; transform: rotate(14deg); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .5)); pointer-events: none; }
 .brand-mark { width: 48px; height: 48px; border-radius: 50%; background: #000; box-shadow: 0 0 0 2px var(--mustard); transition: transform .4s var(--ease); }
 .brand:hover .brand-mark { transform: rotate(-10deg) scale(1.06); }
 .brand-word { display: grid; line-height: .9; }
@@ -138,7 +144,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* Hero */
 .hero { position: relative; overflow: hidden; color: var(--cream); background: var(--char); }
-.hero::before { content: ''; position: absolute; inset: auto -10% -40% 35%; height: 120%; background: radial-gradient(closest-side, rgba(255, 183, 3, .28), transparent 70%); pointer-events: none; }
+.hero::before { content: ''; position: absolute; inset: auto -10% -40% 35%; height: 120%; background: radial-gradient(closest-side, var(--brillo), transparent 70%); pointer-events: none; }
 .hero::after { content: ''; position: absolute; inset: 0; opacity: .5; background-image: radial-gradient(rgba(255, 247, 234, .07) 1px, transparent 1px); background-size: 22px 22px; pointer-events: none; mask-image: linear-gradient(90deg, #000, transparent 60%); -webkit-mask-image: linear-gradient(90deg, #000, transparent 60%); }
 .hero-inner { position: relative; z-index: 1; min-height: min(760px, calc(100svh - var(--header-h))); padding-block: clamp(48px, 7vw, 88px); display: grid; grid-template-columns: 1.05fr .95fr; align-items: center; gap: clamp(28px, 5vw, 64px); }
 .hero h1 { margin: 22px 0 32px; font-size: clamp(54px, 8.2vw, 112px); font-weight: 800; line-height: .9; letter-spacing: -.02em; text-wrap: balance; }
@@ -155,6 +161,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 @keyframes plate-in { from { transform: scale(1.14) rotate(-4deg); } }
 .hero-seal { position: absolute; top: 2%; right: -2%; width: clamp(96px, 12vw, 132px); aspect-ratio: 1; filter: drop-shadow(0 10px 20px rgba(0, 0, 0, .35)); }
 .hero-seal svg { width: 100%; height: 100%; overflow: visible; animation: spin 18s linear infinite; }
+.hero-seal .sello-fondo { fill: var(--ketchup); }
 .hero-seal text { fill: #fff; font: 700 10.6px var(--body); letter-spacing: 1.6px; }
 .hero-seal img { position: absolute; top: 50%; left: 50%; width: 52%; height: 52%; border-radius: 50%; background: #000; transform: translate(-50%, -50%); }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -231,11 +238,22 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .aviso-cerrado strong { font-weight: 800; }
 .web-cerrada [data-link="whatsapp"], .web-cerrada .wa-float, .web-cerrada .cart-btn, .web-cerrada .cart-bar,
 .web-cerrada .dish-action, .web-cerrada .hero-ctas .btn--primary { display: none !important; }
+/* ---------- Festividades: cinta, adornos y detalles ---------- */
+.cinta-tema { position: relative; z-index: 2; padding: 10px var(--gutter); color: #fff; background: var(--cinta-bg); font-size: 15px; font-weight: 700; text-align: center; letter-spacing: .01em; }
+:root[data-tema="fiestas_patrias"] .cinta-tema { box-shadow: inset 0 -6px 0 #ce1126, inset 0 -12px 0 #003893, inset 0 -18px 0 #fcd116; padding-bottom: 26px; }
+:root[data-tema] .promo .eyebrow--light, :root[data-tema] .promo .text-link { color: var(--cream); }
+.decoracion { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.adorno { position: absolute; line-height: 1; opacity: .55; user-select: none; will-change: transform; }
+.adorno.flotar { animation: adorno-flotar var(--d, 10s) ease-in-out var(--r, 0s) infinite; }
+.adorno.caer { animation: adorno-caer var(--d, 12s) linear var(--r, 0s) infinite; }
+@keyframes adorno-flotar { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-24px) rotate(8deg); } }
+@keyframes adorno-caer { from { transform: translateY(-12vh) rotate(0deg); } to { transform: translateY(110vh) rotate(260deg); } }
+@media (prefers-reduced-motion: reduce) { .adorno { animation: none !important; } }
 .dish-action--lg .add-btn { min-height: 54px; padding: 0 24px 0 20px; font-size: 16px; }
 .dish-action--lg .stepper button { width: 46px; height: 46px; }
 
 /* Promo */
-.promo { position: relative; overflow: hidden; padding-block: clamp(64px, 9vw, 110px); color: var(--cream); background: var(--ketchup); }
+.promo { position: relative; overflow: hidden; padding-block: clamp(64px, 9vw, 110px); color: var(--cream); background: var(--promo-bg); }
 .promo::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(-45deg, transparent 0 22px, rgba(0, 0, 0, .05) 22px 44px); pointer-events: none; }
 .promo-inner { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 80px); align-items: center; }
 .promo-media { position: relative; }

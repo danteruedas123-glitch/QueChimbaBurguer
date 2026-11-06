@@ -20,6 +20,7 @@
   let productos = CFG.productos.map((p) => ({ ...p, agotado: !!p.agotado }));
   let destacado = CFG.promo ?? null;
   let pedidosWebActivos = true;
+  let festividad = CFG.festividad ?? { tema: CFG.tema ?? 'normal' };
   let productoPorId = new Map(productos.map((p) => [p.id, p]));
 
   const SB = CFG.supabase ?? {};
@@ -51,7 +52,8 @@
       precio: p.precio, etiqueta: p.etiqueta || undefined, foto: p.foto_url || 'assets/img/logo.webp', agotado: !!p.agotado
     })),
     destacado: m.destacado ? { producto: m.destacado.producto, titulo: m.destacado.titulo, foto: m.destacado.foto_url } : null,
-    pedidosWebActivos: m.pedidos_web_activos !== false
+    pedidosWebActivos: m.pedidos_web_activos !== false,
+    festividad: m.festividad ?? { tema: 'normal' }
   });
 
   const usarMenu = (m) => {
@@ -59,6 +61,7 @@
     productos = m.productos;
     destacado = m.destacado;
     pedidosWebActivos = m.pedidosWebActivos;
+    festividad = m.festividad ?? { tema: 'normal' };
     productoPorId = new Map(productos.map((p) => [p.id, p]));
   };
 
@@ -470,9 +473,78 @@
   };
 
   /** Dibuja todo lo que depende del menú (al iniciar y cada vez que el menú cambie). */
+  /* ---------- Festividades: tema de temporada (elegido en la app) ---------- */
+  const ORIGINAL = {
+    titulo: document.title,
+    favicon: $('[data-favicon]')?.getAttribute('href'),
+    sello: $('[data-sello]')?.textContent,
+    marquesina: $('[data-marquesina]')?.innerHTML
+  };
+  const VARIABLES = {
+    char: '--char', char2: '--char-2', mustard: '--mustard', mustard2: '--mustard-2', ketchup: '--ketchup',
+    ketchup2: '--ketchup-2', promo: '--promo-bg', cinta: '--cinta-bg', brillo: '--brillo'
+  };
+  const anios = (n) => (n === 1 ? '1 año' : `${n} años`);
+  const rellenar = (texto, n) => String(texto).replaceAll('{anios}', anios(n)).replaceAll('{ANIOS}', anios(n).toUpperCase());
+  const iconoEmoji = (e) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="88">${e}</text></svg>`)}`;
+  let temaPintado = null;
+
+  /** fest = { tema, variante (1-3), numero (aniversario) } calculado por la base de datos */
+  function aplicarTema(fest) {
+    const t = (window.QB_TEMAS ?? {})[fest?.tema];
+    const nVar = Math.min(Math.max(Number(fest?.variante) || 1, 1), t ? t.variantes.length : 1);
+    const v = t ? t.variantes[nVar - 1] : null;
+    const n = Number(fest?.numero) || 1;
+    const clave = v ? `${fest.tema}:${nVar}:${n}` : 'normal';
+    if (clave === temaPintado) return;
+    temaPintado = clave;
+
+    const raiz = document.documentElement;
+    if (v) { raiz.dataset.tema = fest.tema; raiz.dataset.variante = String(nVar); }
+    else { delete raiz.dataset.tema; delete raiz.dataset.variante; }
+    Object.entries(VARIABLES).forEach(([clave2, css]) => {
+      if (v?.colores?.[clave2]) raiz.style.setProperty(css, v.colores[clave2]);
+      else raiz.style.removeProperty(css);
+    });
+
+    const cinta = $('[data-cinta]');
+    if (cinta) { cinta.textContent = v ? rellenar(v.cinta, n) : ''; cinta.hidden = !v; }
+    $$('[data-sticker]').forEach((s) => { s.textContent = v?.icono ?? ''; s.hidden = !v; });
+    const sello = $('[data-sello]');
+    if (sello) sello.textContent = v ? rellenar(v.sello, n) : ORIGINAL.sello;
+    const marquesina = $('[data-marquesina]');
+    if (marquesina) {
+      marquesina.innerHTML = v
+        ? [0, 1].map(() => v.marquesina.map((x) => `<span>${escapar(rellenar(x, n))}</span><i>${v.icono}</i>`).join('')).join('')
+        : ORIGINAL.marquesina;
+    }
+    const favicon = $('[data-favicon]');
+    if (favicon) {
+      favicon.type = v ? 'image/svg+xml' : 'image/png';
+      favicon.href = v ? iconoEmoji(v.icono) : ORIGINAL.favicon;
+    }
+    document.title = v ? `${v.icono} ${ORIGINAL.titulo}` : ORIGINAL.titulo;
+
+    // Adornos de la portada: posiciones fijas y variadas (sin azar)
+    const caja = $('[data-decoracion]');
+    if (caja) {
+      const cuantos = v ? (window.innerWidth < 760 ? 10 : 18) : 0;
+      caja.innerHTML = Array.from({ length: cuantos }, (_, i) => {
+        const izquierda = (i * 53 + 7) % 100;
+        const arriba = v.movimiento === 'caer' ? -8 : (i * 37 + 5) % 90;
+        const tam = 18 + ((i * 7) % 24);
+        const dur = 9 + ((i * 5) % 9);
+        const retraso = -((i * 1.9) % dur).toFixed(1);
+        return `<span class="adorno ${v.movimiento}" style="left:${izquierda}%;top:${arriba}%;font-size:${tam}px;--d:${dur}s;--r:${retraso}s">${v.adornos[i % v.adornos.length]}</span>`;
+      }).join('');
+    }
+  }
+  window.QB_aplicarTema = aplicarTema; // lo usan las pruebas automáticas de contraste
+
   let menuDibujado = false;
   const aplicarMenu = () => {
     menuDibujado = true;
+    aplicarTema(festividad);
     pintarMenu();
     pintarPromo();
     pintarPreciosSueltos();
@@ -497,7 +569,7 @@
       menuGuardado = { t: Date.now(), datos: nuevo };
       almacen.guardar(KEY_MENU, menuGuardado);
       usarMenu(nuevo);
-      if (cambio) aplicarMenu(); else pintarAvisoPausa();
+      if (cambio) aplicarMenu(); else { pintarAvisoPausa(); aplicarTema(festividad); }
     } catch (e) {
       console.warn('Menú en línea no disponible; se usa el guardado.', e.message);
     }
@@ -673,7 +745,7 @@
      pedir el menú AL INSTANTE, sin recargar. El aviso no trae datos: el menú
      siempre se pide a menu_publico(). Conexión mínima, sin librerías. */
   let refrescoPendiente;
-  const refrescarPronto = () => { clearTimeout(refrescoPendiente); refrescoPendiente = setTimeout(refrescarMenu, 300); };
+  const refrescarPronto = () => { clearTimeout(refrescoPendiente); refrescoPendiente = setTimeout(refrescarMenu, 50); };
 
   function escucharCambios() {
     if (!conSupabase || typeof WebSocket !== 'function') return;

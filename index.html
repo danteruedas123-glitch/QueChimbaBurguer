@@ -6,7 +6,7 @@
   <title>Quechimba Burger · Hamburguesas y salchipapas en Valledupar</title>
   <meta name="description" content="Las hamburguesas y salchipapas más chimbas de Valledupar, en el barrio La Florencia. Arma tu pedido en línea y envíalo por WhatsApp en segundos.">
   <meta name="theme-color" content="#17120e">
-  <link rel="icon" href="assets/img/favicon-64.png" type="image/png">
+  <link rel="icon" href="assets/img/favicon-64.png" type="image/png" data-favicon>
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 
   <!-- Vista previa al compartir en WhatsApp, Facebook, etc. -->
@@ -57,6 +57,7 @@
     <div class="container header-inner">
       <a class="brand" href="#inicio" aria-label="Quechimba Burger, ir al inicio">
         <img class="brand-mark" src="assets/img/logo.webp" width="48" height="48" alt="">
+        <span class="brand-sticker" data-sticker aria-hidden="true" hidden></span>
         <span class="brand-word"><b>Quechimba</b><small>Burger</small></span>
       </a>
 
@@ -88,7 +89,11 @@
 
   <main>
     <!-- ============ PORTADA ============ -->
+    <!-- Cinta de la festividad activa (se muestra sola según el tema) -->
+    <div class="cinta-tema" data-cinta hidden></div>
+
     <section class="hero" id="inicio">
+      <div class="decoracion" data-decoracion aria-hidden="true"></div>
       <div class="container hero-inner">
         <div class="hero-copy">
           <span class="status-pill status-pill--hero" data-estado>Consultando horario…</span>
@@ -111,8 +116,8 @@
           <div class="hero-seal" aria-hidden="true">
             <svg viewBox="0 0 120 120">
               <defs><path id="seal-path" d="M60 60m-44 0a44 44 0 1 1 88 0a44 44 0 1 1-88 0"/></defs>
-              <circle cx="60" cy="60" r="58" fill="#D93418"/>
-              <text><textPath href="#seal-path">HECHA AL MOMENTO ✦ 100% RES ✦ </textPath></text>
+              <circle class="sello-fondo" cx="60" cy="60" r="58" fill="#D33216"/>
+              <text><textPath href="#seal-path" textLength="272" lengthAdjust="spacingAndGlyphs" data-sello>HECHA AL MOMENTO ✦ 100% RES ✦ </textPath></text>
             </svg>
             <img src="assets/img/logo.webp" width="56" height="56" alt="">
           </div>
@@ -126,7 +131,7 @@
     </section>
 
     <div class="marquee" aria-hidden="true">
-      <div class="marquee-track">
+      <div class="marquee-track" data-marquesina>
         <span>Hamburguesas</span><i>✦</i><span>Perros bien cargados</span><i>✦</i><span>Salchipapas de nivel</span><i>✦</i><span>Malteadas</span><i>✦</i><span>Combos para compartir</span><i>✦</i>
         <span>Hamburguesas</span><i>✦</i><span>Perros bien cargados</span><i>✦</i><span>Salchipapas de nivel</span><i>✦</i><span>Malteadas</span><i>✦</i><span>Combos para compartir</span><i>✦</i>
       </div>
@@ -289,6 +294,7 @@
   <div class="toast" role="status" aria-live="polite" popover="manual" data-toast></div>
 
   <script src="js/config.js" defer></script>
+  <script src="js/temas.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>
