@@ -50,11 +50,19 @@ before(async () => {
   proc = spawn(exe ?? ELECTRON, [...(exe ? [] : ['.']), '--demo', `--remote-debugging-port=${PUERTO}`], {
     cwd: RAIZ, env: { ...entorno, QB_E2E_PDF: dirPDF },
   });
-  for (let i = 0; i < 80 && !browser; i++) {
+  // Diagnóstico: lo que Electron escribe y si se cierra antes de tiempo
+  let salidaElectron = '';
+  let codigoSalida = null;
+  proc.stdout.on('data', (d) => { salidaElectron += d; });
+  proc.stderr.on('data', (d) => { salidaElectron += d; });
+  proc.on('exit', (c) => { codigoSalida = c; });
+  const intentos = 80 * FACTOR; // 20 s en tu PC, 60 s en GitHub Actions
+  for (let i = 0; i < intentos && !browser && codigoSalida === null; i++) {
     try { browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${PUERTO}`, defaultViewport: null }); } catch { await espera(250); }
   }
-  assert.ok(browser, 'no se pudo conectar con Electron');
-  for (let i = 0; i < 80 && !page; i++) {
+  assert.ok(browser, `no se pudo conectar con Electron (código de salida: ${codigoSalida}). Salida:
+${salidaElectron.slice(-1500)}`);
+  for (let i = 0; i < intentos && !page; i++) {
     page = (await browser.pages()).find((p) => p.url().startsWith('app://'));
     if (!page) await espera(250);
   }
