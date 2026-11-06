@@ -42,8 +42,12 @@ function servir() {
       if (!ruta.startsWith(WEB)) { res.writeHead(403).end(); return; }
       try {
         let cuerpo = await readFile(ruta);
-        if (url.pathname === '/js/config.js' && req.headers.referer?.includes('sb=1')) {
-          cuerpo = cuerpo.toString().replace("url: '',", `url: '${SB_URL}',`).replace("anonKey: ''", `anonKey: '${SB_KEY}'`);
+        if (url.pathname === '/js/config.js') {
+          // Nunca se usa el Supabase real en las pruebas: se apunta al simulado o se desactiva
+          const conSb = req.headers.referer?.includes('sb=1');
+          cuerpo = cuerpo.toString()
+            .replace(/url: '[^']*'/, `url: '${conSb ? SB_URL : ''}'`)
+            .replace(/anonKey: '[^']*'/, `anonKey: '${conSb ? SB_KEY : ''}'`);
         }
         res.writeHead(200, { 'Content-Type': TIPOS[path.extname(ruta)] ?? 'application/octet-stream' }).end(cuerpo);
       } catch {

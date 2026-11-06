@@ -100,6 +100,10 @@ test('la interfaz no tiene acceso a Node.js ni al sistema', async () => {
   assert.deepEqual(r.puente, ['abrirExterno', 'actualizador', 'config', 'demo', 'notificar', 'pdf', 'recargar']);
 });
 
+test('la librería de Supabase carga en la interfaz (necesaria fuera del modo demo)', async () => {
+  assert.equal(await page.evaluate(() => typeof window.supabase?.createClient), 'function');
+});
+
 test('no puede navegar fuera de la app ni leer archivos del disco', async () => {
   ignorarConsola = true;
   const url = page.url();

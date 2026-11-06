@@ -4,17 +4,17 @@
  * protocolo propio app:// con lista blanca de carpetas y CSP estricta.
  */
 import { app, BrowserWindow, ipcMain, protocol, net, shell, Notification, dialog } from 'electron';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { leerConfig, guardarConfig, validarConexion } from './config.js';
 import { registrarDemo } from './demo.js';
 import { generarPDF } from './pdf.js';
 import { iniciarActualizador } from './actualizador.js';
+import { rutaSupabaseUMD } from './rutas.js';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const require = createRequire(import.meta.url);
-const SUPABASE_UMD = path.join(path.dirname(require.resolve('@supabase/supabase-js')), '..', 'umd', 'supabase.js');
+// Si falta, falla al arrancar con un mensaje claro (no con una pantalla rota)
+const SUPABASE_UMD = rutaSupabaseUMD();
 
 const MODO_DEMO = process.argv.includes('--demo') || process.env.QB_DEMO === '1';
 const ORIGEN = 'app://qb';
