@@ -9,6 +9,16 @@
        reemplazarse por los reales antes de publicar el sitio.
    ===================================================================== */
 window.QB_CONFIG = {
+  /* Conexión con la base de datos (la misma de la app de escritorio).
+     Con estos dos datos, el MENÚ y los PRECIOS se administran desde la app
+     y los pedidos quedan registrados para la contabilidad.
+     Si se dejan vacíos, la web usa el menú de este archivo y solo WhatsApp.
+     ⚠️  Usar SOLO la llave pública "anon"/"publishable" (nunca la service_role). */
+  supabase: {
+    url: '',      // PENDIENTE · ej. 'https://xxxx.supabase.co'
+    anonKey: ''   // PENDIENTE · llave pública anon
+  },
+
   negocio: {
     nombre: 'Quechimba Burger',
     whatsapp: '573042987537',            // solo números, con 57 adelante

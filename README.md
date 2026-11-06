@@ -19,9 +19,21 @@ WebQuechimbaburger/
 Fuente de las fotos reales y el logo: Instagram del negocio, [@quechimbaburger1](https://www.instagram.com/quechimbaburger1/).
 Son capturas de videos (360 px de ancho); conviene pedir al negocio las fotos y el logo **originales en alta resolución**.
 
+## Conexión con la app de escritorio (Supabase)
+
+En `js/config.js` → `supabase.url` y `supabase.anonKey` (llave **pública** anon). Con eso:
+
+- El **menú, precios, fotos, agotados y el producto destacado** se administran desde la app de escritorio *Quechimba Pedidos* (rama `escritorio`) y se ven aquí al instante.
+- Cada pedido queda **registrado** para la contabilidad, y el mensaje de WhatsApp lleva su número (`*Pedido #0142*`).
+- Los precios los calcula el servidor: aunque alguien manipule la página, se cobra el precio real.
+- Si Supabase no responde, la web sigue funcionando con el último menú conocido y el pedido sale por WhatsApp.
+- El encargado puede **pausar los pedidos en línea** desde la app, y la web lo avisa.
+
+Si los dos campos están vacíos, la web funciona como antes, con el menú de `config.js`. Las instrucciones completas están en el README de la rama `escritorio`.
+
 ## Cómo cambiar el menú, precios u horario
 
-Todo se edita en **`js/config.js`**:
+Sin Supabase, todo se edita en **`js/config.js`** (con Supabase, desde la app de escritorio):
 
 - **Precio:** cambia el número (`precio: 18000` = $18.000).
 - **Agregar un producto:** copia un bloque `{ id: … }`, pégalo debajo y cambia los datos. El `id` debe ser único, en minúsculas y sin espacios.

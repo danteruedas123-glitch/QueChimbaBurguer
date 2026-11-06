@@ -9,14 +9,62 @@
   const CFG = window.QB_CONFIG;
   if (!CFG) return;
 
-  const { negocio, horario, categorias, productos } = CFG;
+  const { negocio, horario } = CFG;
   const KEY_CARRITO = 'qb_carrito_v1';
   const KEY_CLIENTE = 'qb_cliente_v1';
+  const KEY_MENU = 'qb_menu_v1';
+
+  /* ---------- Menú: viene de Supabase (si está configurado) o de config.js ---------- */
+  // Formato interno: producto { id (slug), categoria (slug), nombre, descripcion, precio, etiqueta, foto, agotado }
+  let categorias = CFG.categorias;
+  let productos = CFG.productos.map((p) => ({ ...p, agotado: !!p.agotado }));
+  let destacado = CFG.promo ?? null;
+  let pedidosWebActivos = true;
+  let productoPorId = new Map(productos.map((p) => [p.id, p]));
+
+  const SB = CFG.supabase ?? {};
+  const conSupabase = Boolean(SB.url && SB.anonKey);
+
+  // Llama una función de la base de datos (PostgREST) con tiempo límite
+  async function rpc(funcion, cuerpo, ms = 6000) {
+    const control = new AbortController();
+    const reloj = setTimeout(() => control.abort(), ms);
+    const cabeceras = { apikey: SB.anonKey, 'Content-Type': 'application/json' };
+    if (SB.anonKey.split('.').length === 3) cabeceras.Authorization = `Bearer ${SB.anonKey}`;
+    try {
+      const r = await fetch(`${SB.url.replace(/\/$/, '')}/rest/v1/rpc/${funcion}`, {
+        method: 'POST', headers: cabeceras, body: JSON.stringify(cuerpo ?? {}), signal: control.signal
+      });
+      const datos = await r.json().catch(() => null);
+      if (!r.ok) throw Object.assign(new Error(datos?.message ?? `Error ${r.status}`), { hint: datos?.hint ?? null });
+      return datos;
+    } finally {
+      clearTimeout(reloj);
+    }
+  }
+
+  // Convierte el menú de la base de datos al formato del sitio
+  const desdeServidor = (m) => ({
+    categorias: m.categorias.map((c) => ({ id: c.slug, nombre: c.nombre })),
+    productos: m.productos.map((p) => ({
+      id: p.slug, categoria: p.categoria, nombre: p.nombre, descripcion: p.descripcion,
+      precio: p.precio, etiqueta: p.etiqueta || undefined, foto: p.foto_url || 'assets/img/logo.webp', agotado: !!p.agotado
+    })),
+    destacado: m.destacado ? { producto: m.destacado.producto, titulo: m.destacado.titulo, foto: m.destacado.foto_url } : null,
+    pedidosWebActivos: m.pedidos_web_activos !== false
+  });
+
+  const usarMenu = (m) => {
+    categorias = m.categorias;
+    productos = m.productos;
+    destacado = m.destacado;
+    pedidosWebActivos = m.pedidosWebActivos;
+    productoPorId = new Map(productos.map((p) => [p.id, p]));
+  };
 
   /* ---------- Utilidades ---------- */
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-  const productoPorId = new Map(productos.map((p) => [p.id, p]));
 
   const precio = (n) => '$' + Math.round(n).toLocaleString('es-CO');
   const escapar = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -55,9 +103,10 @@
   });
   $$('[data-dato]').forEach((el) => { el.textContent = negocio[el.dataset.dato] ?? ''; });
   $$('[data-year]').forEach((el) => { el.textContent = new Date().getFullYear(); });
-  $$('[data-precio-de]').forEach((el) => {
+  const pintarPreciosSueltos = () => $$('[data-precio-de]').forEach((el) => {
     const p = productoPorId.get(el.dataset.precioDe);
-    if (p) el.textContent = precio(p.precio); else el.hidden = true;
+    el.hidden = !p;
+    if (p) el.textContent = precio(p.precio);
   });
   // El mapa (~1 MB) solo se descarga cuando el cliente toca "Ver mapa"
   const mapa = $('[data-mapa]');
@@ -155,7 +204,7 @@
   const vacio = $('[data-menu-empty]');
 
   const tarjeta = (p) => `
-    <article class="dish" data-id="${escapar(p.id)}" data-texto="${escapar(normalizar(`${p.nombre} ${p.descripcion} ${p.etiqueta ?? ''}`))}">
+    <article class="dish ${p.agotado ? 'is-soldout' : ''}" data-id="${escapar(p.id)}" data-texto="${escapar(normalizar(`${p.nombre} ${p.descripcion} ${p.etiqueta ?? ''}`))}">
       <div class="dish-media">
         <img src="${escapar(foto(p.foto, 600, 450))}"
              ${esUnsplash(p.foto) ? `srcset="${escapar(foto(p.foto, 360, 270))} 360w, ${escapar(foto(p.foto, 600, 450))} 600w, ${escapar(foto(p.foto, 900, 675))} 900w"
@@ -174,7 +223,12 @@
     </article>`;
 
   // Las fotos de cada categoría solo se descargan al abrirla (ahorra datos)
-  if (menu) {
+  let grupos = [];
+  let buscando = false;
+  let abiertaAntes = null;
+  const pintarMenu = () => {
+    if (!menu) return;
+    const abierta = grupos.find((g) => g.open)?.dataset.grupo;
     menu.innerHTML = categorias.map((c) => {
       const items = productos.filter((p) => p.categoria === c.id);
       if (!items.length) return '';
@@ -194,21 +248,20 @@
           <div class="cat-body"><div class="menu-grid">${items.map(tarjeta).join('')}</div></div>
         </details>`;
     }).join('');
-  }
-
-  const grupos = $$('.cat', menu);
-  let buscando = false;
-  let abiertaAntes = null;
-
-  // Al abrir una categoría, llevarla arriba para que se vean sus productos
-  grupos.forEach((g) => g.addEventListener('toggle', () => {
-    if (!g.open || buscando) return;
-    requestAnimationFrame(() => {
-      const top = g.getBoundingClientRect().top;
-      const header = $('[data-header]').offsetHeight;
-      if (top < header || top > window.innerHeight * 0.45) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }));
+    grupos = $$('.cat', menu);
+    // Al abrir una categoría, llevarla arriba para que se vean sus productos
+    grupos.forEach((g) => g.addEventListener('toggle', () => {
+      if (!g.open || buscando) return;
+      requestAnimationFrame(() => {
+        const top = g.getBoundingClientRect().top;
+        const header = $('[data-header]').offsetHeight;
+        if (top < header || top > window.innerHeight * 0.45) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }));
+    const previa = grupos.find((g) => g.dataset.grupo === abierta);
+    if (previa) previa.open = true;
+    if (buscador?.value) aplicarBusqueda();
+  };
 
   const aplicarBusqueda = () => {
     const q = normalizar(buscador?.value);
@@ -253,9 +306,13 @@
   }));
 
   /* ---------- Franja destacada ---------- */
-  const promoCfg = CFG.promo ?? {};
-  const promo = productoPorId.get(promoCfg.producto);
-  if (promo) {
+  const pintarPromo = () => {
+    const promoCfg = destacado ?? {};
+    const promo = productoPorId.get(promoCfg.producto);
+    const seccion = $('#destacado');
+    if (!seccion) return;
+    seccion.hidden = !promo;
+    if (!promo) return;
     const cat = categorias.find((c) => c.id === promo.categoria);
     $('[data-promo-title]').textContent = promoCfg.titulo ?? 'Destacado';
     $('[data-promo-name]').textContent = promo.nombre;
@@ -267,21 +324,29 @@
     img.alt = promo.nombre;
     $('.promo [data-action-for]').dataset.actionFor = promo.id;
     const enlace = $('[data-promo-link]');
+    enlace.hidden = false;
     if (cat) {
       enlace.dataset.abrirCat = cat.id;
       enlace.querySelector('span').textContent = `Ver todas las opciones de ${cat.nombre.toLowerCase()}`;
     } else {
       enlace.hidden = true;
     }
-  } else {
-    $('#destacado')?.remove();
-  }
+  };
 
   /* ---------- Carrito ---------- */
   const carrito = new Map(
-    Object.entries(almacen.leer(KEY_CARRITO, {}))
-      .filter(([id, n]) => productoPorId.has(id) && Number.isInteger(n) && n > 0)
+    Object.entries(almacen.leer(KEY_CARRITO, {})).filter(([, n]) => Number.isInteger(n) && n > 0)
   );
+  // Quita del carrito lo que ya no existe o se agotó (ej. el encargado lo cambió en la app)
+  const depurarCarrito = () => {
+    const quitados = [];
+    carrito.forEach((n, id) => {
+      const p = productoPorId.get(id);
+      if (!p || p.agotado) { carrito.delete(id); if (p) quitados.push(p.nombre); }
+    });
+    guardarCarrito();
+    return quitados;
+  };
 
   const totales = () => {
     let unidades = 0;
@@ -301,9 +366,11 @@
     const p = productoPorId.get(id);
     const n = carrito.get(id) ?? 0;
     $$(`[data-action-for="${CSS.escape(id)}"]`).forEach((caja) => {
-      caja.innerHTML = n
-        ? controlCantidad(p, n)
-        : `<button class="add-btn" type="button" data-inc="${escapar(id)}" aria-label="Agregar ${escapar(p.nombre)} al pedido">${icono('plus')}<span>Agregar</span></button>`;
+      caja.innerHTML = p.agotado
+        ? '<span class="soldout">Agotado</span>'
+        : n
+          ? controlCantidad(p, n)
+          : `<button class="add-btn" type="button" data-inc="${escapar(id)}" aria-label="Agregar ${escapar(p.nombre)} al pedido">${icono('plus')}<span>Agregar</span></button>`;
       caja.closest('.dish')?.classList.toggle('in-cart', n > 0);
     });
   };
@@ -349,7 +416,7 @@
   const botonCarrito = $('.cart-btn');
   const cambiarCantidad = (id, delta) => {
     const p = productoPorId.get(id);
-    if (!p) return;
+    if (!p || (p.agotado && delta > 0)) return;
     const antes = carrito.get(id) ?? 0;
     const n = Math.max(0, Math.min(99, antes + delta));
     if (n) carrito.set(id, n); else carrito.delete(id);
@@ -389,8 +456,44 @@
     avisar('Pedido vaciado');
   });
 
-  productos.forEach((p) => pintarAccion(p.id));
-  pintarCarrito();
+  const pintarAvisoPausa = () => {
+    const aviso = $('[data-pausa]');
+    if (aviso) aviso.hidden = pedidosWebActivos;
+    const enviar = $('[data-enviar]');
+    if (enviar) enviar.disabled = !pedidosWebActivos;
+  };
+
+  /** Dibuja todo lo que depende del menú (al iniciar y cada vez que el menú cambie). */
+  const aplicarMenu = () => {
+    pintarMenu();
+    pintarPromo();
+    pintarPreciosSueltos();
+    const quitados = depurarCarrito();
+    productos.forEach((p) => pintarAccion(p.id));
+    pintarCarrito();
+    pintarAvisoPausa();
+    if (quitados.length) avisar(`Se quitó de tu pedido (agotado): <b>${escapar(quitados.join(', '))}</b>`);
+  };
+
+  // 1) Arranque inmediato con el último menú conocido (o el de config.js)
+  let menuGuardado = conSupabase ? almacen.leer(KEY_MENU, null) : null;
+  if (menuGuardado?.datos) usarMenu(menuGuardado.datos);
+
+  // 2) Menú actualizado desde Supabase; si falla, el sitio sigue funcionando igual
+  async function refrescarMenu() {
+    if (!conSupabase) return;
+    try {
+      const nuevo = desdeServidor(await rpc('menu_publico'));
+      if (!nuevo.productos.length) return;
+      const cambio = JSON.stringify(nuevo) !== JSON.stringify(menuGuardado?.datos ?? null);
+      menuGuardado = { t: Date.now(), datos: nuevo };
+      almacen.guardar(KEY_MENU, menuGuardado);
+      usarMenu(nuevo);
+      if (cambio) aplicarMenu();
+    } catch (e) {
+      console.warn('Menú en línea no disponible; se usa el guardado.', e.message);
+    }
+  }
 
   /* ---------- Panel del pedido ---------- */
   const panel = $('[data-drawer]');
@@ -437,15 +540,17 @@
     return !primero;
   };
 
-  const armarMensaje = (datos) => {
-    const { subtotal } = totales();
-    const items = [...carrito].map(([id, n]) => {
-      const p = productoPorId.get(id);
-      return `• ${n} x ${p.nombre} — ${precio(p.precio * n)}`;
-    });
+  const armarMensaje = (datos, registro = null) => {
+    // Si el pedido quedó registrado, se usan los valores calculados por el servidor
+    const lineasPedido = registro
+      ? registro.items.map((i) => ({ nombre: i.nombre, n: i.cantidad, valor: i.subtotal }))
+      : [...carrito].map(([id, n]) => { const p = productoPorId.get(id); return { nombre: p.nombre, n, valor: p.precio * n }; });
+    const subtotal = registro ? registro.subtotal : totales().subtotal;
+    const items = lineasPedido.map((l) => `• ${l.n} x ${l.nombre} — ${precio(l.valor)}`);
     const domicilio = datos.entrega === 'Domicilio';
     return [
       `¡Hola, ${negocio.nombre}! 🍔`,
+      registro ? `*Pedido #${String(registro.numero).padStart(4, '0')}*` : null,
       'Quiero hacer este pedido:',
       '',
       ...items,
@@ -459,13 +564,65 @@
     ].filter((l) => l !== null).join('\n');
   };
 
-  form.addEventListener('submit', (e) => {
+  const PAGOS = { efectivo: 'efectivo', nequi: 'nequi', daviplata: 'daviplata', transferencia: 'transferencia', tarjeta: 'tarjeta' };
+  const ERRORES_NEGOCIO = ['PEDIDOS_PAUSADOS', 'PRODUCTO_NO_DISPONIBLE', 'PRODUCTO_NO_EXISTE', 'DATO_INVALIDO', 'DEMASIADOS_PEDIDOS', 'PEDIDO_VACIO'];
+  let enviando = false;
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!carrito.size || !validar()) return;
+    if (enviando || !carrito.size || !validar() || !pedidosWebActivos) return;
     const datos = Object.fromEntries(['entrega', 'nombre', 'direccion', 'pago', 'notas'].map((k) => [k, form[k].value.trim()]));
     almacen.guardar(KEY_CLIENTE, { nombre: datos.nombre, direccion: datos.direccion, pago: datos.pago, entrega: datos.entrega });
-    window.open(linkWhatsApp(armarMensaje(datos)), '_blank', 'noopener');
-    avisar('Abriendo WhatsApp…');
+
+    if (!conSupabase) {
+      window.open(linkWhatsApp(armarMensaje(datos)), '_blank', 'noopener');
+      avisar('Abriendo WhatsApp…');
+      return;
+    }
+
+    // La pestaña se abre YA (dentro del clic) para que el navegador no la bloquee
+    const ventana = window.open('', '_blank');
+    if (ventana) ventana.opener = null;
+    let registro = null;
+    enviando = true;
+    $('[data-enviar]').disabled = true;
+    try {
+      registro = await rpc('crear_pedido_web', {
+        p_items: [...carrito].map(([slug, cantidad]) => ({ slug, cantidad })),
+        p_cliente: {
+          nombre: datos.nombre,
+          tipo_entrega: datos.entrega === 'Domicilio' ? 'domicilio' : 'recoger',
+          direccion: datos.entrega === 'Domicilio' ? datos.direccion : '',
+          metodo_pago: PAGOS[normalizar(datos.pago)] ?? 'otro',
+          notas: datos.notas
+        }
+      }, 8000);
+    } catch (err) {
+      // Errores del negocio: se informa y NO se envía. Fallas de red: se envía solo por WhatsApp.
+      if (ERRORES_NEGOCIO.includes(err.hint)) {
+        ventana?.close();
+        avisar(escapar(err.message));
+        if (err.hint !== 'DATO_INVALIDO') refrescarMenu();
+        return;
+      }
+      console.warn('No se pudo registrar el pedido en línea; se envía solo por WhatsApp.', err.message);
+    } finally {
+      enviando = false;
+      $('[data-enviar]').disabled = !pedidosWebActivos;
+    }
+
+    const url = linkWhatsApp(armarMensaje(datos, registro));
+    if (ventana) ventana.location.href = url; else location.href = url;
+    if (registro) {
+      // Pedido registrado: se vacía el carrito para no enviarlo dos veces por error
+      const ids = [...carrito.keys()];
+      carrito.clear();
+      guardarCarrito();
+      ids.forEach(pintarAccion);
+      pintarCarrito();
+      cerrarPanel();
+    }
+    avisar(registro ? `Pedido <b>#${String(registro.numero).padStart(4, '0')}</b> registrado · abriendo WhatsApp…` : 'Abriendo WhatsApp…');
   });
 
   /* ---------- Aviso flotante ---------- */
@@ -488,6 +645,11 @@
       if (soportaPopover) setTimeout(() => toast.matches(':popover-open') && toast.hidePopover(), 300);
     }, 2400);
   }
+
+  /* ---------- Menú: primer dibujo y actualización en línea ---------- */
+  aplicarMenu();
+  refrescarMenu();
+  setInterval(refrescarMenu, 5 * 60_000); // precios y agotados al día sin recargar
 
   /* ---------- Navegación ---------- */
   const header = $('[data-header]');

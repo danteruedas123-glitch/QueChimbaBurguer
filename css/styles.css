@@ -219,6 +219,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .stepper button:hover { background: rgba(255, 247, 234, .14); }
 .stepper button svg { width: 17px; height: 17px; }
 .stepper output { min-width: 24px; text-align: center; font-weight: 700; }
+.soldout { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--cream-2); color: var(--muted); font-weight: 700; font-size: 14px; }
+.dish.is-soldout .dish-media img { filter: grayscale(.85); opacity: .7; }
+.pausa { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #fde3dd; color: var(--ketchup-2); font-weight: 600; font-size: 14px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .dish-action--lg .add-btn { min-height: 54px; padding: 0 24px 0 20px; font-size: 16px; }
 .dish-action--lg .stepper button { width: 46px; height: 46px; }
 
