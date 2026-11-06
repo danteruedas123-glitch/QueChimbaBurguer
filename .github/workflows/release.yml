@@ -38,6 +38,13 @@ jobs:
       - name: Pruebas end-to-end de la app (modo demo)
         run: npm run test:e2e
 
+      # Se crea UNA sola publicación antes de subir archivos (si electron-builder
+      # la crea mientras sube varios archivos a la vez, puede quedar duplicada)
+      - name: Crear la publicación en GitHub
+        run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --notes "Quechimba Pedidos ${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Compilar y publicar instalador
         run: npm run release
         env:
