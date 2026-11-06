@@ -122,7 +122,12 @@ async function abrir({ conSupabase = true, preparar } = {}) {
   return { page, errores };
 }
 
-const abrirCategoria = (page, slug) => page.$eval(`.cat[data-grupo="${slug}"]`, (d) => { d.open = true; });
+async function abrirCategoria(page, slug) {
+  await page.$eval(`.cat[data-grupo="${slug}"]`, (d) => { d.open = true; });
+  // Esperar a que la categoría termine de desplegarse (si no, el clic cae donde estaba el botón)
+  await page.waitForFunction((s) => document.querySelector(`.cat[data-grupo="${s}"]`).getAnimations({ subtree: true })
+    .every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity), { timeout: 5000, polling: 50 }, slug);
+}
 
 async function pedir(page, productos, { nombre = 'Cliente Prueba', direccion = 'Calle 1 # 2-3', pago = 'Nequi' } = {}) {
   for (const [slug, n] of productos) {
@@ -382,7 +387,7 @@ describe('festividades', () => {
     await page.close();
   });
 
-  test('cada festividad cambia cinta, sello, ícono de la pestaña, calcomanía y adornos', async () => {
+  test('cada festividad cambia cinta, sello, ícono, calcomanía, escena ilustrada y menú', async () => {
     const { page } = await abrir();
     const r = await page.evaluate(() => {
       window.QB_aplicarTema({ tema: 'halloween', variante: 1 });
@@ -393,27 +398,109 @@ describe('festividades', () => {
         sello: document.querySelector('[data-sello]').textContent,
         favicon: document.querySelector('[data-favicon]').href.startsWith('data:image/svg+xml,'),
         calcomania: document.querySelector('[data-sticker]').textContent,
-        adornos: document.querySelectorAll('.adorno').length,
         titulo: document.title.startsWith('🎃'),
+        escena: document.querySelectorAll('.decoracion svg').length > 5,
+        suelo: !!document.querySelector('.decoracion .capa-suelo svg'),
+        figura: !document.querySelector('[data-figura]').hidden && !!document.querySelector('[data-figura] svg'),
+        baba: !!document.querySelector('[data-titulo-extra] .titulo-gotas') && !!document.querySelector('[data-borde-menu] svg'),
+        tituloMenu: document.querySelector('[data-titulo-menu]').textContent,
+        patron: getComputedStyle(document.documentElement).getPropertyValue('--patron-menu').trim().startsWith('url('),
       };
     });
-    assert.deepEqual(r, { tema: 'halloween', cinta: r.cinta, cintaVisible: true, sello: 'FELIZ HALLOWEEN ✦ DULCE O TRUCO ✦ ', favicon: true, calcomania: '🎃', adornos: 18, titulo: true });
+    assert.deepEqual(r, {
+      tema: 'halloween', cinta: r.cinta, cintaVisible: true, sello: 'FELIZ HALLOWEEN ✦ DULCE O TRUCO ✦ ', favicon: true, calcomania: '🎃', titulo: true,
+      escena: true, suelo: true, figura: true, baba: true, tituloMenu: '¿Qué se te antoja esta noche… de terror?', patron: true,
+    });
     assert.match(r.cinta, /Halloween/);
     // Volver a normal deja la web como estaba
-    const n = await page.evaluate(() => { window.QB_aplicarTema({ tema: 'normal' }); return { tema: document.documentElement.dataset.tema ?? null, adornos: document.querySelectorAll('.adorno').length, favicon: document.querySelector('[data-favicon]').getAttribute('href'), cinta: document.querySelector('[data-cinta]').hidden }; });
-    assert.deepEqual(n, { tema: null, adornos: 0, favicon: 'assets/img/favicon-64.png', cinta: true });
+    const n = await page.evaluate(() => {
+      window.QB_aplicarTema({ tema: 'normal' });
+      return {
+        tema: document.documentElement.dataset.tema ?? null,
+        dibujos: document.querySelectorAll('.decoracion *, [data-figura] *, [data-titulo-extra] *, [data-borde-menu] *').length,
+        figuraOculta: document.querySelector('[data-figura]').hidden,
+        favicon: document.querySelector('[data-favicon]').getAttribute('href'),
+        cinta: document.querySelector('[data-cinta]').hidden,
+        tituloMenu: document.querySelector('[data-titulo-menu]').textContent,
+        patron: getComputedStyle(document.documentElement).getPropertyValue('--patron-menu').trim(),
+      };
+    });
+    assert.deepEqual(n, { tema: null, dibujos: 0, figuraOculta: true, favicon: 'assets/img/favicon-64.png', cinta: true, tituloMenu: '¿Qué se te antoja hoy?', patron: '' });
     await page.close();
+  });
+
+  test('los 30 diseños tienen escena completa, con nombres válidos y dibujos SVG sin errores', async () => {
+    const { page, errores } = await abrir();
+    const avisos = [];
+    page.on('console', (m) => { if (m.type() === 'error' && /attribute|Expected/.test(m.text())) avisos.push(m.text()); });
+    const malos = await page.evaluate(() => {
+      const { catalogo } = window.QB_ESCENAS;
+      const mal = [];
+      for (const [tema, t] of Object.entries(window.QB_TEMAS)) {
+        if (!t.saludo || !t.menu) mal.push(`${tema}: falta saludo o título del menú`);
+        t.variantes.forEach((v, i) => {
+          const id = `${tema} diseño ${i + 1}`;
+          if (!catalogo.escenas.includes(v.escena)) mal.push(`${id}: escena "${v.escena}" no existe`);
+          if (!catalogo.guirnaldas.includes(v.guirnalda)) mal.push(`${id}: guirnalda "${v.guirnalda}" no existe`);
+          if (!catalogo.patrones.includes(v.patron)) mal.push(`${id}: patrón "${v.patron}" no existe`);
+          if (!catalogo.ornamentos.includes(v.ornamento)) mal.push(`${id}: ornamento "${v.ornamento}" no existe`);
+          window.QB_aplicarTema({ tema, variante: i + 1, numero: 7 });
+          const d = document.querySelector('.decoracion');
+          if (!d.querySelector('.capa-guirnalda svg')) mal.push(`${id}: sin guirnalda`);
+          if (!d.querySelector('.capa-cielo')?.children.length) mal.push(`${id}: cielo vacío`);
+          if (!d.querySelector('.capa-suelo')?.children.length) mal.push(`${id}: suelo vacío`);
+        });
+      }
+      window.QB_aplicarTema({ tema: 'normal' });
+      return mal;
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(malos, []);
+    assert.deepEqual(avisos, [], 'todos los dibujos SVG son válidos');
+    assert.deepEqual(errores, []);
+    await page.close();
+  });
+
+  test('al entrar en temporada sale la bienvenida una sola vez por visita y se quita sola', async () => {
+    await ctx.staff('ajustes_guardar', { p: { tema: 'halloween', tema_variante: 3 } });
+    // Se registra cada bienvenida en el instante en que aparece (dura 2,6 s y no hay que perderla)
+    const preparar = () => {
+      window.__bienvenidas = [];
+      new MutationObserver((cambios) => cambios.forEach((c) => c.addedNodes.forEach((n) => {
+        if (n.classList?.contains('bienvenida')) window.__bienvenidas.push(n.textContent.replace(/\s+/g, ' ').trim());
+      }))).observe(document, { childList: true, subtree: true });
+    };
+    const { page } = await abrir({ preparar });
+    try {
+      await page.waitForFunction(() => window.__bienvenidas.length > 0, { timeout: 10000, polling: 50 });
+      assert.match((await page.evaluate(() => window.__bienvenidas))[0], /Feliz Halloween/);
+      await page.waitForFunction(() => !document.querySelector('.bienvenida'), { timeout: 10000, polling: 100 });
+      const alcanzable = await page.evaluate(() => {
+        const boton = document.querySelector('.hero-ctas .btn--primary');
+        const b = boton.getBoundingClientRect();
+        return boton.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+      });
+      assert.ok(alcanzable, 'después de la bienvenida los botones se pueden usar');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.documentElement.dataset.tema === 'halloween', { timeout: 10000, polling: 50 });
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.deepEqual(await page.evaluate(() => window.__bienvenidas), [], 'en la misma visita no se repite');
+    } finally {
+      await ctx.staff('ajustes_guardar', { p: { tema: 'normal' } });
+      await page.close();
+    }
   });
 
   test('el aniversario muestra el número correcto ("1 año", "5 años")', async () => {
     const { page } = await abrir();
     const textos = await page.evaluate(() => [1, 5].map((numero) => {
       window.QB_aplicarTema({ tema: 'aniversario', variante: 1, numero });
-      return [document.querySelector('[data-cinta]').textContent, document.querySelector('[data-sello]').textContent];
+      return [document.querySelector('[data-cinta]').textContent, document.querySelector('[data-sello]').textContent, document.querySelector('[data-figura] text').textContent];
     }));
     assert.match(textos[0][0], /¡Cumplimos 1 año!/);
     assert.match(textos[1][0], /¡Cumplimos 5 años!/);
     assert.match(textos[1][1], /^5 AÑOS/);
+    assert.deepEqual([textos[0][2], textos[1][2]], ['1', '5'], 'el pastel lleva el número del aniversario');
     await page.close();
   });
 
@@ -432,7 +519,7 @@ describe('festividades', () => {
     await page.close();
   });
 
-  test('los adornos no tapan botones y se quedan quietos si el usuario pide menos movimiento', async () => {
+  test('la escena no tapa botones y se queda quieta si el usuario pide menos movimiento', async () => {
     const { page } = await abrir();
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
     const r = await page.evaluate(() => {
@@ -440,9 +527,15 @@ describe('festividades', () => {
       const boton = document.querySelector('.hero-ctas .btn--primary');
       const b = boton.getBoundingClientRect();
       const encima = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-      return { botonAlcanzable: boton.contains(encima), animacion: getComputedStyle(document.querySelector('.adorno')).animationName };
+      const todo = [...document.querySelectorAll('.decoracion *, [data-figura], [data-figura] *, [data-titulo-extra] *, [data-menu-figura] *')];
+      return {
+        botonAlcanzable: boton.contains(encima),
+        animados: todo.filter((e) => getComputedStyle(e).animationName !== 'none').length,
+        voladores: [...document.querySelectorAll('.particula, .vuela, .sube, .vuelo-trineo')].filter((e) => getComputedStyle(e).display !== 'none').length,
+        elementos: todo.length > 50,
+      };
     });
-    assert.deepEqual(r, { botonAlcanzable: true, animacion: 'none' });
+    assert.deepEqual(r, { botonAlcanzable: true, animados: 0, voladores: 0, elementos: true });
     await page.close();
   });
 });
