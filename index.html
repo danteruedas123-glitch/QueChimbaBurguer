@@ -80,6 +80,12 @@
     </div>
   </header>
 
+  <!-- Se muestra cuando el dueño desactiva la web desde la app (local cerrado) -->
+  <div class="aviso-cerrado" role="status" data-aviso-cerrado hidden>
+    <strong>Estamos cerrados en este momento.</strong>
+    <span>No estamos recibiendo pedidos. ¡Te esperamos pronto!</span>
+  </div>
+
   <main>
     <!-- ============ PORTADA ============ -->
     <section class="hero" id="inicio">
@@ -272,7 +278,7 @@
           <strong data-cart-total></strong>
         </div>
         <p class="drawer-note" data-nota-domicilio></p>
-        <p class="pausa" data-pausa hidden>En este momento no estamos recibiendo pedidos en línea. Escríbenos por WhatsApp.</p>
+        <p class="pausa" data-pausa hidden>Estamos cerrados en este momento: no estamos recibiendo pedidos.</p>
         <button class="btn btn--wa btn--lg btn--block" type="submit" form="checkout" data-enviar>
           <svg aria-hidden="true"><use href="#i-wa"/></svg> Pedir por WhatsApp
         </button>

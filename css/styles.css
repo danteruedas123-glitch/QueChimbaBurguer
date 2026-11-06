@@ -226,6 +226,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .dish.is-soldout .dish-media img { filter: grayscale(.85); opacity: .7; }
 .pausa { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #fde3dd; color: var(--ketchup-2); font-weight: 600; font-size: 14px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+/* Web desactivada (local cerrado): aviso arriba y sin ninguna forma de hacer pedidos */
+.aviso-cerrado { position: sticky; top: var(--header-h); z-index: 35; padding: 12px var(--gutter); display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; text-align: center; color: #fff; background: var(--ketchup); font-size: 15px; box-shadow: 0 8px 20px -12px rgba(0, 0, 0, .6); }
+.aviso-cerrado strong { font-weight: 800; }
+.web-cerrada [data-link="whatsapp"], .web-cerrada .wa-float, .web-cerrada .cart-btn, .web-cerrada .cart-bar,
+.web-cerrada .dish-action, .web-cerrada .hero-ctas .btn--primary { display: none !important; }
 .dish-action--lg .add-btn { min-height: 54px; padding: 0 24px 0 20px; font-size: 16px; }
 .dish-action--lg .stepper button { width: 46px; height: 46px; }
 

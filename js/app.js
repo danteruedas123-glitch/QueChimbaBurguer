@@ -456,11 +456,17 @@
     avisar('Pedido vaciado');
   });
 
+  /** Web desactivada por el dueño: aviso de cerrado y sin ninguna forma de pedir (ni página ni WhatsApp). */
   const pintarAvisoPausa = () => {
+    const cerrada = !pedidosWebActivos;
+    document.body.classList.toggle('web-cerrada', cerrada);
+    const banner = $('[data-aviso-cerrado]');
+    if (banner) banner.hidden = !cerrada;
     const aviso = $('[data-pausa]');
-    if (aviso) aviso.hidden = pedidosWebActivos;
+    if (aviso) aviso.hidden = !cerrada;
     const enviar = $('[data-enviar]');
-    if (enviar) enviar.disabled = !pedidosWebActivos;
+    if (enviar) enviar.disabled = cerrada;
+    if (cerrada && panel?.open) cerrarPanel();
   };
 
   /** Dibuja todo lo que depende del menú (al iniciar y cada vez que el menú cambie). */
@@ -491,7 +497,7 @@
       menuGuardado = { t: Date.now(), datos: nuevo };
       almacen.guardar(KEY_MENU, menuGuardado);
       usarMenu(nuevo);
-      if (cambio) aplicarMenu();
+      if (cambio) aplicarMenu(); else pintarAvisoPausa();
     } catch (e) {
       console.warn('Menú en línea no disponible; se usa el guardado.', e.message);
     }
@@ -658,7 +664,8 @@
     aplicarMenu();      // visitas siguientes: instantáneo con el último menú guardado
     refrescarMenu();
   }
-  setInterval(refrescarMenu, 5 * 60_000); // precios y agotados al día sin recargar
+  // Cada minuto: precios, agotados y si la web está activada (cierre del local) al día sin recargar
+  setInterval(refrescarMenu, 60_000);
 
   /* ---------- Navegación ---------- */
   const header = $('[data-header]');
