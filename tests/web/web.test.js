@@ -67,6 +67,21 @@ async function abrir({ conSupabase = true, preparar } = {}) {
   const errores = [];
   page.on('pageerror', (e) => errores.push(e.message));
   await page.evaluateOnNewDocument(() => {
+    // Realtime simulado: registra lo que la web envía y permite emitir avisos
+    window.__ws = { enviados: [], conexiones: [] };
+    window.WebSocket = class {
+      constructor(url) {
+        this.url = url;
+        this.readyState = 0;
+        window.__ws.conexiones.push(this);
+        setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 10);
+      }
+      send(d) { window.__ws.enviados.push(JSON.parse(d)); }
+      close() { this.readyState = 3; }
+    };
+    window.__avisarCambio = (tabla) => window.__ws.conexiones.forEach((c) => c.onmessage?.({
+      data: JSON.stringify({ topic: 'realtime:menu-publico', event: 'broadcast', payload: { event: 'menu-cambio', payload: { tabla } } }),
+    }));
     // Captura las URL de WhatsApp en lugar de abrir pestañas reales
     window.__whatsapp = [];
     window.open = (u) => {
@@ -268,6 +283,57 @@ describe('pedidos desde la web', () => {
     assert.equal(await page.evaluate(() => window.__whatsapp.filter((u) => u.startsWith('https://wa.me/')).length), 0);
     assert.equal((await ultimoPedido()).numero, antes);
     await ctx.staff('producto_guardar', { p: { ...p, agotado: false } });
+    await page.close();
+  });
+});
+
+describe('web en vivo (sin recargar la pestaña)', () => {
+  test('se conecta al canal público "menu-publico" con la llave pública', async () => {
+    const { page } = await abrir();
+    await page.waitForFunction(() => window.__ws.enviados.some((m) => m.event === 'phx_join'), { timeout: 5000, polling: 50 });
+    const r = await page.evaluate(() => ({ url: window.__ws.conexiones[0].url, join: window.__ws.enviados.find((m) => m.event === 'phx_join') }));
+    assert.match(r.url, /^wss:\/\/prueba\.supabase\.co\/realtime\/v1\/websocket\?apikey=/);
+    assert.equal(r.join.topic, 'realtime:menu-publico');
+    assert.equal(r.join.payload.config.private, false);
+    await page.close();
+  });
+
+  test('un cambio de precio en la app aparece en la web al instante, sin recargar', async () => {
+    const { page } = await abrir();
+    await page.evaluate(() => { window.__mismaPagina = true; });
+    const p = (await ctx.admin(`select id, categoria_id, nombre, precio from public.productos where slug = 'clasica'`))[0];
+    await ctx.staff('producto_guardar', { p: { ...p, precio: 23456 } });
+    const t0 = Date.now();
+    await page.evaluate(() => window.__avisarCambio('productos'));
+    await page.waitForFunction(() => document.querySelector('.dish[data-id="clasica"] .dish-price').textContent === '$23.456', { timeout: 5000, polling: 50 });
+    assert.ok(Date.now() - t0 < 3000, 'debe verse en menos de 3 s');
+    assert.equal(await page.evaluate(() => window.__mismaPagina), true, 'no se recargó la pestaña');
+    await ctx.staff('producto_guardar', { p });
+    await page.close();
+  });
+
+  test('desactivar la web desde la app muestra "cerrado" al instante en la pestaña abierta', async () => {
+    const { page } = await abrir();
+    await ctx.staff('ajustes_guardar', { p: { pedidos_web_activos: false } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => !document.querySelector('[data-aviso-cerrado]').hidden, { timeout: 5000, polling: 50 });
+    await ctx.staff('ajustes_guardar', { p: { pedidos_web_activos: true } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => document.querySelector('[data-aviso-cerrado]').hidden, { timeout: 5000, polling: 50 });
+    await page.close();
+  });
+
+  test('cambiar el producto destacado cambia también su foto y su nombre en la web', async () => {
+    const { page } = await abrir();
+    assert.match(await page.$eval('[data-promo-img]', (i) => i.getAttribute('src')), /promo-salchipapa/);
+    const [combo] = await ctx.admin(`select id from public.productos where slug = 'combo-x4'`);
+    const [original] = await ctx.admin(`select producto_destacado_id, foto_destacado_url from public.ajustes`);
+    await ctx.staff('ajustes_guardar', { p: { producto_destacado_id: combo.id } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => document.querySelector('[data-promo-name]').textContent === 'Combo x4', { timeout: 5000, polling: 50 });
+    const src = await page.$eval('[data-promo-img]', (i) => i.getAttribute('src'));
+    assert.match(src, /photo-1610614819513/, 'la foto es la del Combo x4');
+    await ctx.admin(`update public.ajustes set producto_destacado_id = $1, foto_destacado_url = $2`, [original.producto_destacado_id, original.foto_destacado_url]);
     await page.close();
   });
 });
