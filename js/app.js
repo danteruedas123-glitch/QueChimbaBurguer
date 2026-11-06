@@ -464,7 +464,9 @@
   };
 
   /** Dibuja todo lo que depende del menú (al iniciar y cada vez que el menú cambie). */
+  let menuDibujado = false;
   const aplicarMenu = () => {
+    menuDibujado = true;
     pintarMenu();
     pintarPromo();
     pintarPreciosSueltos();
@@ -647,8 +649,15 @@
   }
 
   /* ---------- Menú: primer dibujo y actualización en línea ---------- */
-  aplicarMenu();
-  refrescarMenu();
+  if (conSupabase && !menuGuardado) {
+    // Primera visita: se espera el menú real (precios al día) hasta 1,5 s para no
+    // mostrar precios viejos ni redibujar mientras el cliente toca; si no llega, config.js.
+    const respaldo = setTimeout(() => { if (!menuDibujado) aplicarMenu(); }, 1500);
+    refrescarMenu().finally(() => { clearTimeout(respaldo); if (!menuDibujado) aplicarMenu(); });
+  } else {
+    aplicarMenu();      // visitas siguientes: instantáneo con el último menú guardado
+    refrescarMenu();
+  }
   setInterval(refrescarMenu, 5 * 60_000); // precios y agotados al día sin recargar
 
   /* ---------- Navegación ---------- */
