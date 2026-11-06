@@ -42,6 +42,9 @@
   --container: 1200px;
   --gutter: clamp(18px, 4vw, 40px);
   --ease: cubic-bezier(.2, .8, .2, 1);
+  /* Espacio para la etiqueta "Powered by Netlify" que el plan gratis pone abajo a la derecha.
+     Si se cambia de plan o de hosting y la etiqueta desaparece, poner 0px. */
+  --hosting-etiqueta: 56px;
 }
 
 /* ---------- 2. Base ---------- */
@@ -268,7 +271,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .map-facade span { padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line-light); }
 
 /* Footer */
-.site-footer { padding-block: 40px calc(40px + env(safe-area-inset-bottom)); color: var(--cream); background: #0f0b08; border-top: 1px solid var(--line-light); }
+.site-footer { padding-block: 40px calc(40px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)); color: var(--cream); background: #0f0b08; border-top: 1px solid var(--line-light); }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; }
 .socials { display: flex; gap: 10px; }
 .socials a { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line-light); transition: background .2s, color .2s, border-color .2s; }
@@ -277,12 +280,12 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .footer-legal { width: 100%; padding-top: 20px; border-top: 1px solid var(--line-light); color: var(--muted-light); font-size: 14px; }
 
 /* Flotantes */
-.wa-float { position: fixed; z-index: 30; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--wa); box-shadow: 0 12px 28px -8px rgba(0, 0, 0, .45); transition: transform .2s var(--ease); }
+.wa-float { position: fixed; z-index: 30; right: 20px; bottom: calc(20px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)); width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--wa); box-shadow: 0 12px 28px -8px rgba(0, 0, 0, .45); transition: transform .2s var(--ease); }
 .wa-float:hover { transform: scale(1.08); }
 .wa-float svg { width: 30px; height: 30px; }
 .cart-bar { display: none; }
 
-.toast { position: fixed; z-index: 90; inset: auto auto calc(24px + env(safe-area-inset-bottom)) 50%; width: max-content; max-width: calc(100% - 32px); margin: 0; padding: 13px 20px; border: 0; border-radius: 14px; text-align: center; overflow: visible; color: var(--cream); background: var(--ink); font-size: 15px; font-weight: 600; box-shadow: 0 16px 32px -12px rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; transform: translate(-50%, 16px); transition: opacity .25s, transform .3s var(--ease); }
+.toast { position: fixed; z-index: 90; inset: auto auto calc(24px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)) 50%; width: max-content; max-width: calc(100% - 32px); margin: 0; padding: 13px 20px; border: 0; border-radius: 14px; text-align: center; overflow: visible; color: var(--cream); background: var(--ink); font-size: 15px; font-weight: 600; box-shadow: 0 16px 32px -12px rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; transform: translate(-50%, 16px); transition: opacity .25s, transform .3s var(--ease); }
 .toast.is-on { opacity: 1; transform: translate(-50%, 0); }
 .toast b { color: var(--mustard); }
 
@@ -388,12 +391,12 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .stepper button { width: 34px; height: 34px; }
 
   body.has-cart .wa-float { display: none; }
-  .cart-bar { position: fixed; z-index: 30; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); min-height: 60px; padding: 0 20px 0 10px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 999px; color: var(--ink); background: var(--mustard); font-weight: 700; font-size: 16px; box-shadow: 0 16px 34px -10px rgba(0, 0, 0, .55); animation: bar-in .35s var(--ease); }
+  .cart-bar { position: fixed; z-index: 30; left: 12px; right: 12px; bottom: calc(12px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)); min-height: 60px; padding: 0 20px 0 10px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 999px; color: var(--ink); background: var(--mustard); font-weight: 700; font-size: 16px; box-shadow: 0 16px 34px -10px rgba(0, 0, 0, .55); animation: bar-in .35s var(--ease); }
   .cart-bar[hidden] { display: none !important; }
   .cart-bar-count { min-width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--mustard); background: var(--ink); }
   .cart-bar-total { margin-left: auto; font: 800 22px/1 var(--display); font-stretch: 80%; }
-  body.has-cart .site-footer { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
-  body.has-cart .toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
+  body.has-cart .site-footer { padding-bottom: calc(110px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)); }
+  body.has-cart .toast { bottom: calc(86px + var(--hosting-etiqueta) + env(safe-area-inset-bottom)); }
   @keyframes bar-in { from { transform: translateY(120%); } }
 
   .drawer { width: 100%; }
