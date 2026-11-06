@@ -1,7 +1,7 @@
 {
   "name": "quechimba-pedidos",
   "productName": "Quechimba Pedidos",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Pedidos, menú y contabilidad de Quechimba Burger",
   "type": "module",
   "main": "src/main/main.js",
