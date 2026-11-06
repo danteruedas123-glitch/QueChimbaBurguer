@@ -664,8 +664,56 @@
     aplicarMenu();      // visitas siguientes: instantáneo con el último menú guardado
     refrescarMenu();
   }
-  // Cada minuto: precios, agotados y si la web está activada (cierre del local) al día sin recargar
+  // Respaldo cada minuto, por si el canal en vivo no está disponible
   setInterval(refrescarMenu, 60_000);
+
+  /* ---------- Cambios en vivo (Supabase Realtime) ----------
+     Cuando el dueño cambia el menú, un precio, el destacado o desactiva la web
+     desde la app, la base de datos avisa por un canal público y la web vuelve a
+     pedir el menú AL INSTANTE, sin recargar. El aviso no trae datos: el menú
+     siempre se pide a menu_publico(). Conexión mínima, sin librerías. */
+  let refrescoPendiente;
+  const refrescarPronto = () => { clearTimeout(refrescoPendiente); refrescoPendiente = setTimeout(refrescarMenu, 300); };
+
+  function escucharCambios() {
+    if (!conSupabase || typeof WebSocket !== 'function') return;
+    const TEMA = 'realtime:menu-publico';
+    const url = `${SB.url.replace(/\/$/, '').replace(/^http/, 'ws')}/realtime/v1/websocket?apikey=${encodeURIComponent(SB.anonKey)}&vsn=1.0.0`;
+    let ws;
+    let latido;
+    let reintento = 1000;
+    let ref = 0;
+    let yaConecto = false;
+    const enviar = (topic, event, payload) => {
+      if (ws?.readyState === 1) ws.send(JSON.stringify({ topic, event, payload, ref: String(++ref) }));
+    };
+    const conectar = () => {
+      try { ws = new WebSocket(url); } catch { return; }
+      ws.onopen = () => {
+        reintento = 1000;
+        enviar(TEMA, 'phx_join', { config: { broadcast: { self: false, ack: false }, presence: { key: '' }, postgres_changes: [], private: false } });
+        latido = setInterval(() => enviar('phoenix', 'heartbeat', {}), 25_000);
+        if (yaConecto) refrescarMenu(); // al reconectar: pudo haber cambios mientras no había internet
+        yaConecto = true;
+      };
+      ws.onmessage = (e) => {
+        try {
+          const m = JSON.parse(e.data);
+          if (m.topic === TEMA && m.event === 'broadcast') refrescarPronto();
+        } catch { /* mensaje ajeno */ }
+      };
+      ws.onclose = () => {
+        clearInterval(latido);
+        setTimeout(conectar, reintento);
+        reintento = Math.min(reintento * 2, 30_000); // reintentos cada vez más espaciados
+      };
+      ws.onerror = () => ws.close();
+    };
+    conectar();
+  }
+  escucharCambios();
+  // Al volver a la pestaña (ej. el cliente cambió de app en el celular), traer lo último
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refrescarPronto(); });
 
   /* ---------- Navegación ---------- */
   const header = $('[data-header]');
