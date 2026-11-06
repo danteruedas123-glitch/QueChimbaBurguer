@@ -478,7 +478,8 @@
     titulo: document.title,
     favicon: $('[data-favicon]')?.getAttribute('href'),
     sello: $('[data-sello]')?.textContent,
-    marquesina: $('[data-marquesina]')?.innerHTML
+    marquesina: $('[data-marquesina]')?.innerHTML,
+    tituloMenu: $('[data-titulo-menu]')?.textContent
   };
   const VARIABLES = {
     char: '--char', char2: '--char-2', mustard: '--mustard', mustard2: '--mustard-2', ketchup: '--ketchup',
@@ -490,7 +491,7 @@
   let temaPintado = null;
 
   /** fest = { tema, variante (1-3), numero (aniversario) } calculado por la base de datos */
-  function aplicarTema(fest) {
+  function aplicarTema(fest, conIntro = true) {
     const t = (window.QB_TEMAS ?? {})[fest?.tema];
     const nVar = Math.min(Math.max(Number(fest?.variante) || 1, 1), t ? t.variantes.length : 1);
     const v = t ? t.variantes[nVar - 1] : null;
@@ -525,21 +526,55 @@
     }
     document.title = v ? `${v.icono} ${ORIGINAL.titulo}` : ORIGINAL.titulo;
 
-    // Adornos de la portada: posiciones fijas y variadas (sin azar)
-    const caja = $('[data-decoracion]');
-    if (caja) {
-      const cuantos = v ? (window.innerWidth < 760 ? 10 : 18) : 0;
-      caja.innerHTML = Array.from({ length: cuantos }, (_, i) => {
-        const izquierda = (i * 53 + 7) % 100;
-        const arriba = v.movimiento === 'caer' ? -8 : (i * 37 + 5) % 90;
-        const tam = 18 + ((i * 7) % 24);
-        const dur = 9 + ((i * 5) % 9);
-        const retraso = -((i * 1.9) % dur).toFixed(1);
-        return `<span class="adorno ${v.movimiento}" style="left:${izquierda}%;top:${arriba}%;font-size:${tam}px;--d:${dur}s;--r:${retraso}s">${v.adornos[i % v.adornos.length]}</span>`;
-      }).join('');
-    }
+    pintarEscena(v, fest?.tema, n, t, conIntro);
   }
-  window.QB_aplicarTema = aplicarTema; // lo usan las pruebas automáticas de contraste
+
+  /* Escena ilustrada (js/escenas.js): guirnalda, cielo, suelo, figura junto a la
+     hamburguesa, adorno del título, borde y patrón del menú, y la bienvenida. */
+  function pintarEscena(v, tema, n, t, conIntro) {
+    const raiz = document.documentElement;
+    const e = v && window.QB_ESCENAS ? window.QB_ESCENAS.construir(v, tema, n) : null;
+    const poner = (sel, html) => $$(sel).forEach((el) => { el.innerHTML = html; el.hidden = !html; });
+    poner('[data-decoracion]', e ? e.guirnalda + e.cielo + e.suelo : '');
+    poner('[data-figura]', e?.figura ?? '');
+    poner('[data-menu-figura]', e?.figura ?? '');
+    poner('[data-titulo-extra]', e?.titulo ?? '');
+    poner('[data-borde-menu]', e?.borde ?? '');
+    [['--patron-menu', e?.patron], ['--patron-claro', e?.patronClaro], ['--ornamento', e?.ornamento]].forEach(([css, valor]) => {
+      if (valor && valor !== 'none') raiz.style.setProperty(css, valor); else raiz.style.removeProperty(css);
+    });
+    const tituloMenu = $('[data-titulo-menu]');
+    if (tituloMenu) tituloMenu.textContent = e && t.menu ? rellenar(t.menu, n) : ORIGINAL.tituloMenu;
+    if (e && conIntro) mostrarBienvenida(e.intro, rellenar(t.saludo ?? t.nombre, n), `${tema}:${v.escena}:${n}`);
+  }
+
+  /** Pantalla de bienvenida: una vez por visita y por festividad; se cierra sola o con un toque. */
+  function mostrarBienvenida(arte, saludo, clave) {
+    try {
+      if (sessionStorage.getItem('qb_bienvenida') === clave) return;
+      sessionStorage.setItem('qb_bienvenida', clave);
+    } catch { /* sin almacenamiento: se muestra igual */ }
+    $('.bienvenida')?.remove();
+    const capa = document.createElement('div');
+    capa.className = 'bienvenida';
+    capa.setAttribute('aria-hidden', 'true');
+    capa.innerHTML = `<div class="bienvenida-caja"><div class="bienvenida-arte">${arte}</div>
+      <p class="bienvenida-saludo">${escapar(saludo)}</p><p class="bienvenida-sub">Quechimba Burger está de fiesta</p></div>`;
+    document.body.append(capa);
+    let cerrada = false;
+    const eventos = ['keydown', 'wheel', 'touchstart'];
+    const cerrar = () => {
+      if (cerrada) return;
+      cerrada = true;
+      capa.classList.add('se-va');
+      setTimeout(() => capa.remove(), 600);
+      eventos.forEach((ev) => removeEventListener(ev, cerrar));
+    };
+    capa.addEventListener('click', cerrar);
+    eventos.forEach((ev) => addEventListener(ev, cerrar, { passive: true }));
+    setTimeout(cerrar, 2600);
+  }
+  window.QB_aplicarTema = (f) => aplicarTema(f, false); // lo usan las pruebas automáticas (sin bienvenida)
 
   let menuDibujado = false;
   const aplicarMenu = () => {

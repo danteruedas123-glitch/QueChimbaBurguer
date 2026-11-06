@@ -97,7 +97,7 @@
       <div class="container hero-inner">
         <div class="hero-copy">
           <span class="status-pill status-pill--hero" data-estado>Consultando horario…</span>
-          <h1>Burgers que son una <em>quechimba<svg viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 14c40-8 80-10 120-6s100 6 174-4" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg></em>.</h1>
+          <h1>Burgers que son una <em>quechimba<svg viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 14c40-8 80-10 120-6s100 6 174-4" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg><span class="titulo-extra" data-titulo-extra aria-hidden="true" hidden></span></em>.</h1>
           <div class="hero-ctas">
             <a class="btn btn--primary btn--lg" href="#menu">Armar mi pedido <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
             <a class="btn btn--ghost btn--lg" data-link="whatsapp" href="#" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-wa"/></svg> Escríbenos</a>
@@ -121,6 +121,7 @@
             </svg>
             <img src="assets/img/logo.webp" width="56" height="56" alt="">
           </div>
+          <div class="hero-figura" data-figura aria-hidden="true" hidden></div>
           <div class="hero-ticket" aria-hidden="true">
             <span>La más pedida</span>
             <strong>La Quechimba</strong>
@@ -139,9 +140,11 @@
 
     <!-- ============ MENÚ ============ -->
     <section class="section menu-section" id="menu" aria-labelledby="menu-title">
+      <div class="borde-menu" data-borde-menu aria-hidden="true" hidden></div>
       <div class="container">
         <header class="section-head">
-          <h2 id="menu-title">¿Qué se te antoja hoy?</h2>
+          <span class="menu-figura" data-menu-figura aria-hidden="true" hidden></span>
+          <h2 id="menu-title" data-titulo-menu>¿Qué se te antoja hoy?</h2>
         </header>
 
         <div class="menu-tools">
@@ -295,6 +298,7 @@
 
   <script src="js/config.js" defer></script>
   <script src="js/temas.js" defer></script>
+  <script src="js/escenas.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>
