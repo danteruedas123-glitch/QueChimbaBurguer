@@ -1,0 +1,7 @@
+# El código siempre con fin de línea LF (igual en Windows, en tu PC y en GitHub Actions)
+* text=auto eol=lf
+# Binarios
+*.png binary
+*.ico binary
+*.webp binary
+*.woff2 binary

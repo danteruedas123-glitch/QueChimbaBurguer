@@ -33,7 +33,8 @@ for (const [nombre, archivo, original, mutado] of MUTACIONES) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'qb-mut-'));
   await cp(path.join(RAIZ, 'supabase'), dir, { recursive: true });
   const ruta = path.join(dir, MIG, archivo);
-  const sql = await readFile(ruta, 'utf8');
+  // Normalizar fines de línea: en Windows (GitHub Actions) los archivos pueden venir con CRLF
+  const sql = (await readFile(ruta, 'utf8')).replace(/\r\n/g, '\n');
   if (!sql.includes(original)) throw new Error(`No se encontró el texto a mutar en ${archivo}: ${nombre}`);
   await writeFile(ruta, sql.replace(original, mutado));
 
