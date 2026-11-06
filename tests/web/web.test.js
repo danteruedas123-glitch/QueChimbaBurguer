@@ -99,6 +99,10 @@ async function abrir({ conSupabase = true, preparar } = {}) {
   });
   await page.goto(`http://127.0.0.1:${puerto}/?${conSupabase ? 'sb=1' : 'sb=0'}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.cat');
+  // Con Supabase disponible, esperar a que el menú real quede aplicado antes de interactuar
+  if (conSupabase && modoSupabase === 'normal') {
+    await page.waitForFunction(() => localStorage.getItem('qb_menu_v1'), { timeout: 10000, polling: 50 });
+  }
   return { page, errores };
 }
 
@@ -112,6 +116,11 @@ async function pedir(page, productos, { nombre = 'Cliente Prueba', direccion = '
   }
   await page.click('.cart-btn');
   await page.waitForSelector('[name=nombre]', { visible: true });
+  // Esperar a que el panel termine de deslizarse (una persona no hace clic durante la animación)
+  await page.waitForFunction(() => {
+    const d = document.querySelector('[data-drawer]');
+    return d.open && d.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
+  }, { timeout: 5000, polling: 50 });
   await page.$eval('[name=nombre]', (el, v) => { el.value = v; }, nombre);
   await page.$eval('[name=direccion]', (el, v) => { el.value = v; }, direccion);
   await page.select('[name=pago]', pago);
@@ -194,6 +203,7 @@ describe('pedidos desde la web', () => {
 
   test('un menú manipulado en el navegador no altera lo que se cobra', async () => {
     // Un "cliente listo" cambia los precios guardados en su navegador a $1
+    modoSupabase = 'lento'; // el menú real tarda: el pedido se hace con el precio falso en pantalla
     const { page } = await abrir({
       preparar: () => localStorage.setItem('qb_menu_v1', JSON.stringify({ t: Date.now(), datos: {
         categorias: [{ id: 'hamburguesas', nombre: 'Hamburguesas' }],
@@ -201,7 +211,7 @@ describe('pedidos desde la web', () => {
         destacado: null, pedidosWebActivos: true,
       } })),
     });
-    modoSupabase = 'lento'; // el menú real tarda: el pedido se hace con el precio falso en pantalla
+    assert.equal(await page.$eval('.dish[data-id="clasica"] .dish-price', (e) => e.textContent), '$1', 'en pantalla está el precio manipulado');
     await pedir(page, [['clasica', 3]]);
     modoSupabase = 'normal';
     await esperarWhatsApp(page);
@@ -263,7 +273,7 @@ describe('compatibilidad y rendimiento', () => {
     await page.close();
   });
 
-  test('el menú aparece de inmediato aunque Supabase tarde (no bloquea la carga)', async () => {
+  test('el menú aparece en menos de 2,5 s aunque Supabase tarde (respaldo de config.js)', async () => {
     modoSupabase = 'lento';
     const t0 = Date.now();
     const { page } = await abrir();
