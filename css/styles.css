@@ -242,6 +242,17 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .cinta-tema { position: relative; z-index: 2; padding: 10px var(--gutter); color: #fff; background: var(--cinta-bg); font-size: 15px; font-weight: 700; text-align: center; letter-spacing: .01em; }
 :root[data-tema="fiestas_patrias"] .cinta-tema { box-shadow: inset 0 -6px 0 #ce1126, inset 0 -12px 0 #003893, inset 0 -18px 0 #fcd116; padding-bottom: 26px; }
 :root[data-tema] .promo .eyebrow--light, :root[data-tema] .promo .text-link { color: var(--cream); }
+/* Fiestas patrias: "quechimba" con la bandera de Colombia (amarillo 1/2, azul 1/4, rojo 1/4).
+   Contorno blanco para que la franja azul se lea sobre el fondo oscuro. */
+:root[data-tema="fiestas_patrias"] .hero h1 em {
+  color: #fcd116;
+  background: linear-gradient(180deg, #fcd116 0 52%, #003893 52% 76%, #ce1126 76% 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, .92);
+  paint-order: stroke fill;
+}
 .decoracion { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .adorno { position: absolute; line-height: 1; opacity: .55; user-select: none; will-change: transform; }
 .adorno.flotar { animation: adorno-flotar var(--d, 10s) ease-in-out var(--r, 0s) infinite; }
