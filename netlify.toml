@@ -1,0 +1,37 @@
+# Configuración de Netlify para la web de Quechimba Burger.
+# Sitio estático: no hay que compilar nada; se publica la carpeta tal cual.
+# En Netlify, la rama de producción debe ser "web" (la rama "escritorio"
+# es la app de Windows y no se publica).
+
+[build]
+  publish = "."
+  command = ""
+
+# Encabezados de seguridad para todas las páginas
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+# Fuente de títulos: nunca cambia → caché de 1 año
+[[headers]]
+  for = "/assets/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Fotos y logo: caché de 1 semana (si se cambia una foto, se ve en máx. 7 días;
+# para verla de inmediato, súbela con otro nombre)
+[[headers]]
+  for = "/assets/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# La documentación del repositorio no debe quedar publicada
+[[redirects]]
+  from = "/README.md"
+  to = "/"
+  status = 301
+  force = true
