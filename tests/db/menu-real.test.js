@@ -6,6 +6,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, access } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,7 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const WEB = process.env.QB_WEB_DIR ?? path.resolve(RAIZ, '..', 'WebQuechimbaburger');
 const PRODUCTOS = productosPlanos();
 const ACTIVOS = PRODUCTOS.filter((p) => p.activo);
+const SIN_WEB = !existsSync(path.join(WEB, 'js', 'config.js')) && `no está la carpeta de la web (${WEB}); define QB_WEB_DIR`;
 
 let base;
 before(async () => { base = await crearBaseLocal(); }); // con el menú real (seed.sql)
@@ -72,12 +74,12 @@ describe('menú real', () => {
     assert.equal(new Set(PRODUCTOS.map((p) => p.slug)).size, PRODUCTOS.length, 'sin productos repetidos');
   });
 
-  test('cada foto del menú existe en la web', async () => {
+  test('cada foto del menú existe en la web', { skip: SIN_WEB }, async () => {
     const fotos = [...new Set([...PRODUCTOS.map((p) => p.foto_url), DESTACADO.foto].filter(Boolean))];
     for (const f of fotos) await access(path.join(WEB, f)).catch(() => assert.fail(`falta la foto ${f}`));
   });
 
-  test('el menú de respaldo de la web es idéntico al de la base de datos', async () => {
+  test('el menú de respaldo de la web es idéntico al de la base de datos', { skip: SIN_WEB }, async () => {
     const ventana = {};
     vm.runInNewContext(await readFile(path.join(WEB, 'js', 'config.js'), 'utf8'), { window: ventana });
     const cfg = JSON.parse(JSON.stringify(ventana.QB_CONFIG)); // objetos creados en otro contexto

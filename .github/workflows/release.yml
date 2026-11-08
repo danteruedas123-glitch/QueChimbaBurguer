@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Descargar la web (rama web) para verificar que el menú y las fotos coinciden
+        uses: actions/checkout@v4
+        with:
+          ref: web
+          path: web-sitio
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,6 +36,8 @@ jobs:
         run: node node_modules/electron/install.js
 
       - name: Pruebas unitarias, de base de datos y seguridad
+        env:
+          QB_WEB_DIR: ${{ github.workspace }}/web-sitio
         run: npm test
 
       - name: Pruebas de mutación (calidad de las pruebas)
