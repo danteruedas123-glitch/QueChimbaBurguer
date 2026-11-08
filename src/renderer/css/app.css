@@ -363,3 +363,13 @@ dialog.modal[open] { animation: aparecer .22s var(--ease); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Opciones al pedir (bebida del combo, en agua o en leche…) ---------- */
+.item-detalle, .linea-detalle { display: block; margin-top: 2px; color: var(--ketchup, #c42d12); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.producto-btn { position: relative; }
+.con-opciones { position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(23, 18, 14, .78); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.grupo-opciones { margin: 0 0 14px; padding: 0; border: 0; }
+.grupo-opciones legend { margin-bottom: 6px; font-weight: 800; font-size: 15px; }
+.grupo-opciones legend small { font-weight: 600; opacity: .7; }
+.precio-opciones { margin: 6px 0 0; font-size: 15px; }
+.precio-opciones b { font-size: 19px; }

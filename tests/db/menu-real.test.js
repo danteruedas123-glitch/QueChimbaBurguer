@@ -23,16 +23,16 @@ before(async () => { base = await crearBaseLocal(); }); // con el menú real (se
 after(() => base.cerrar());
 
 describe('menú real', () => {
-  test('se instala completo: 11 categorías y 112 productos (los 15 jugos ocultos)', async () => {
+  test('se instala completo: 11 categorías y 96 productos, 45 con opciones', async () => {
     const [{ c }] = await base.sql('select count(*)::int c from public.categorias', [], { rol: 'postgres' });
-    const [{ p, ocultos }] = await base.sql('select count(*)::int p, count(*) filter (where not activo)::int ocultos from public.productos', [], { rol: 'postgres' });
-    assert.deepEqual([c, p, ocultos], [CATEGORIAS.length, PRODUCTOS.length, 15]);
-    assert.deepEqual([CATEGORIAS.length, PRODUCTOS.length], [11, 112]);
+    const [{ p, con_opciones }] = await base.sql(`select count(*)::int p, count(*) filter (where jsonb_array_length(opciones) > 0)::int con_opciones from public.productos`, [], { rol: 'postgres' });
+    assert.deepEqual([c, p, con_opciones], [11, 96, 45]);
+    assert.deepEqual([CATEGORIAS.length, PRODUCTOS.length], [11, 96]);
   });
 
   test('la web muestra todo lo que tiene precio, en el orden de la carta, y nada sin precio', async () => {
     const menu = await base.rpc('menu_publico', {}, { rol: 'anon' });
-    assert.deepEqual(menu.categorias.map((c) => c.slug), CATEGORIAS.filter((c) => c.slug !== 'jugos').map((c) => c.slug));
+    assert.deepEqual(menu.categorias.map((c) => c.slug), CATEGORIAS.map((c) => c.slug));
     assert.equal(menu.productos.length, ACTIVOS.length);
     assert.ok(menu.productos.every((p) => p.precio > 0), 'ningún producto visible en $0');
     assert.equal(menu.destacado.producto, DESTACADO.producto);
@@ -41,10 +41,26 @@ describe('menú real', () => {
   test('precios clave de la carta', async () => {
     const precio = Object.fromEntries((await base.rpc('menu_publico', {}, { rol: 'anon' })).productos.map((p) => [p.slug, p.precio]));
     assert.deepEqual(
-      ['chimbita-burger', 'triple-chimba-burger', 'combo-9', 'salchichimba', 'la-de-80k', 'mini-perro-con-papas', 'papa-tornado', 'churrasco',
-        'frutos-rojos-con-todo-super-cargada', 'michelada-clasica-normal', 'agua-250'].map((s) => precio[s]),
-      [23000, 35000, 85000, 23000, 80000, 8000, 5000, 32000, 15000, 6000, 1000],
+      ['chimbita-burger', 'triple-chimba-burger', 'combo-9', 'salchichimba', 'la-de-80k', 'mini-perro', 'papa-tornado', 'churrasco',
+        'frutos-rojos-con-todo', 'michelada-clasica', 'jugo-lulo', 'jugo-limonada-natural', 'agua-250'].map((s) => precio[s]),
+      [23000, 35000, 85000, 23000, 80000, 6000, 5000, 32000, 12000, 6000, 8000, 8000, 1000],
     );
+  });
+
+  test('con las opciones, cada precio de la carta sale exacto', async () => {
+    const ctx = { web: (f, a) => base.rpc(f, a, { rol: 'anon' }) };
+    const cliente = { nombre: 'Ana', tipo_entrega: 'recoger', metodo_pago: 'nequi' };
+    const casos = [
+      ['jugo-lulo', [['En agua']], 8000], ['jugo-lulo', [['En leche']], 10000],
+      ['frutos-rojos-con-todo', [['Normal'], ['Águila']], 12000], ['frutos-rojos-con-todo', [['Cargada'], ['Águila']], 13000],
+      ['frutos-rojos-con-todo', [['Súper cargada'], ['Heineken']], 15000], ['frutos-verdes-sencilla', [['Cargada'], ['Ginger']], 12000],
+      ['michelada-clasica', [['Cargada'], ['Póker']], 7000], ['mini-perro', [['Con papas']], 8000], ['el-sencillo', [['Con papas']], 12000],
+      ['picada', [['De 50K']], 50000], ['picada', [['De 80K']], 80000], ['combo-chimbita', [['Coca-Cola', 'Pepsi', 'Ginger']], 60000],
+    ];
+    for (const [slug, opciones, total] of casos) {
+      const r = await ctx.web('crear_pedido_web', { p_items: [{ slug, cantidad: 1, opciones }], p_cliente: cliente });
+      assert.equal(r.total, total, `${slug} ${JSON.stringify(opciones)}`);
+    }
   });
 
   test('cada producto cabe en las reglas de la base de datos', () => {
@@ -57,7 +73,7 @@ describe('menú real', () => {
   });
 
   test('cada foto del menú existe en la web', async () => {
-    const fotos = [...new Set(PRODUCTOS.map((p) => p.foto_url).filter(Boolean)), DESTACADO.foto];
+    const fotos = [...new Set([...PRODUCTOS.map((p) => p.foto_url), DESTACADO.foto].filter(Boolean))];
     for (const f of fotos) await access(path.join(WEB, f)).catch(() => assert.fail(`falta la foto ${f}`));
   });
 
@@ -100,7 +116,9 @@ describe('actualizar_menu.sql (producción)', () => {
     const [{ n }] = await ctx.admin(`select count(*)::int n from public.productos where slug = 'te-helado'`);
     assert.equal(n, 0, 'lo que nunca se vendió se borra');
     assert.deepEqual(await ctx.admin(`select coalesce(sum(total), 0)::int t from public.pedidos`), antes, 'la contabilidad no cambia');
-    const jugos = await ctx.staff('menu_admin', {});
-    assert.ok(jugos.productos.filter((p) => p.slug.startsWith('jugo-') && p.slug !== 'jugo-hit-litro').every((p) => !p.activo && p.precio === 0), 'jugos ocultos y en $0');
+    const admin = await ctx.staff('menu_admin', {});
+    const lulo = admin.productos.find((p) => p.slug === 'jugo-lulo');
+    assert.deepEqual([lulo.activo, lulo.precio, lulo.opciones[0].titulo], [true, 8000, 'Preparación'], 'jugos con su precio y en agua/leche');
+    assert.equal(admin.ajustes.bebidas_gaseosa[0], 'Coca-Cola', 'listas de bebidas cargadas');
   });
 });

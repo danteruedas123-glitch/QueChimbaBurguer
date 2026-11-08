@@ -5,6 +5,7 @@ import { html, icono, pintar, avisar, modal, confirmar, $ } from '../ui.js';
 import { formatearCOP, parsearCOP } from '../../../shared/dinero.js';
 import { mensajeError } from '../../../shared/utilidades.js';
 import { urlFoto, optimizarFoto } from '../datos.js';
+import { aTexto, desdeTexto } from '../../../shared/opciones.js';
 
 export async function montar(contenedor, ctx) {
   let menu = await ctx.api.menu();
@@ -46,7 +47,7 @@ export async function montar(contenedor, ctx) {
                   ${productos.map((p) => html`
                     <tr class="${p.activo ? '' : 'inactivo'}" data-fila="${p.id}">
                       <td><img class="miniatura" src="${urlFoto(p.foto_url, urlSitio(), 120)}" loading="lazy" alt="" data-foto></td>
-                      <td class="producto-nombre"><b>${p.nombre}</b> ${p.etiqueta ? html`<span class="chip chip--rojo">${p.etiqueta}</span>` : ''}<small>${p.descripcion}</small></td>
+                      <td class="producto-nombre"><b>${p.nombre}</b> ${p.etiqueta ? html`<span class="chip chip--rojo">${p.etiqueta}</span>` : ''}${p.opciones?.length ? html` <span class="chip">${p.opciones.map((g) => g.titulo).join(' · ')}</span>` : ''}<small>${p.descripcion}</small></td>
                       <td class="der num"><b>${formatearCOP(p.precio)}</b></td>
                       <td><label class="interruptor"><input type="checkbox" data-alternar="activo" data-id="${p.id}" ${p.activo ? 'checked' : ''} aria-label="Mostrar ${p.nombre} en la web"></label></td>
                       <td><label class="interruptor"><input type="checkbox" data-alternar="agotado" data-id="${p.id}" ${p.agotado ? 'checked' : ''} aria-label="Marcar ${p.nombre} como agotado"></label></td>
@@ -87,6 +88,9 @@ export async function montar(contenedor, ctx) {
           <label class="campo"><span>Etiqueta <em>(opcional)</em></span><input name="etiqueta" maxlength="24" value="${p?.etiqueta ?? ''}" placeholder="Ej: Nueva, Picante"></label>
           <label class="campo"><span>Orden</span><input name="orden" type="number" min="0" max="999" value="${p?.orden ?? 0}"></label>
         </div>
+        <label class="campo"><span>Opciones al pedir <em>(opcional)</em></span>
+          <textarea name="opciones" rows="3" spellcheck="false" placeholder="Preparación: En agua, En leche +2000&#10;Gaseosas x2: [gaseosas]">${aTexto(p?.opciones ?? [])}</textarea>
+          <small>Una línea por cosa a elegir. "+2000" suma al precio. "x2" = elige 2. [gaseosas] y [micheladas] usan las listas de Ajustes. Se abre una ventanita al pedir.</small></label>
         <label class="interruptor"><input type="checkbox" name="activo" ${p?.activo ?? true ? 'checked' : ''}> Mostrar en la web</label>`,
       alAbrir: (d) => {
         $('[data-archivo]', d).addEventListener('change', async (e) => {
@@ -109,6 +113,7 @@ export async function montar(contenedor, ctx) {
       alAceptar: async (f) => {
         const precio = parsearCOP(f.precio.value);
         if (precio === null) throw new Error('Escribe el precio en pesos, sin decimales (ej. 25.000)');
+        const opciones = desdeTexto(f.opciones.value);
         let foto = p?.foto_url ?? null;
         if (fotoNueva) foto = await ctx.api.fuente.subirFoto(fotoNueva);
         try {
@@ -116,7 +121,7 @@ export async function montar(contenedor, ctx) {
             ...(p ? { id: p.id } : {}),
             categoria_id: f.categoria.value, nombre: f.nombre.value, descripcion: f.descripcion.value,
             precio, etiqueta: f.etiqueta.value, foto_url: foto, orden: Number(f.orden.value) || 0,
-            activo: f.activo.checked, agotado: p?.agotado ?? false,
+            activo: f.activo.checked, agotado: p?.agotado ?? false, opciones,
           });
         } catch (e) { throw Object.assign(e, { mensajeUsuario: mensajeError(e) }); }
         categoriaSel = f.categoria.value;

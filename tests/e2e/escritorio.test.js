@@ -204,6 +204,37 @@ test('registrar una venta de mostrador suma exactamente a la contabilidad de hoy
   assert.equal(despues - antes, esperado);
 });
 
+test('en la caja, un jugo en leche y un combo con sus gaseosas abren la ventanita y cobran exacto', async () => {
+  const antes = (await rpc('reporte_ventas', { p_desde: hoyEn(), p_hasta: hoyEn() })).datos.resumen.total;
+  await irA('venta', '.rejilla-productos .producto-btn');
+  const menu = (await rpc('menu_admin')).datos;
+  const lulo = menu.productos.find((p) => p.slug === 'jugo-lulo');
+  const melo = menu.productos.find((p) => p.slug === 'combo-melo');
+  await page.click(`[data-producto="${lulo.id}"]`);
+  await page.waitForSelector('dialog.modal [data-grupo-opc="0"]');
+  await page.select('dialog.modal [data-grupo-opc="0"]', 'En leche');
+  assert.equal(await texto('dialog.modal [data-precio-opc]'), formatearCOP(10000), 'la ventanita muestra el precio con el extra');
+  await page.click('dialog.modal [data-aceptar]');
+  await page.waitForFunction(() => !document.querySelector('dialog.modal'), { timeout: 5000, polling: 50 });
+  await page.click(`[data-producto="${melo.id}"]`);
+  await page.waitForSelector('dialog.modal [data-grupo-opc="0"]');
+  await page.click('dialog.modal [data-aceptar]'); // sin elegir las gaseosas: no deja
+  await page.waitForSelector('dialog.modal [data-error]:not([hidden])');
+  assert.match(await texto('dialog.modal [data-error]'), /Elige/);
+  const selects = await page.$$('dialog.modal [data-grupo-opc="0"]');
+  await selects[0].select('Coca-Cola');
+  await selects[1].select('Pepsi');
+  await page.click('dialog.modal [data-aceptar]');
+  await page.waitForFunction(() => !document.querySelector('dialog.modal'), { timeout: 5000, polling: 50 });
+  assert.match(await texto('[data-lineas]'), /Preparación: En leche/);
+  assert.match(await texto('[data-lineas]'), /Gaseosas: Coca-Cola, Pepsi/);
+  assert.equal(await texto('[data-total]'), formatearCOP(10000 + melo.precio));
+  await page.click('[data-registrar]');
+  await page.waitForFunction(() => document.querySelector('[data-total]').textContent === '$0', { timeout: 10000, polling: 100 });
+  const despues = (await rpc('reporte_ventas', { p_desde: hoyEn(), p_hasta: hoyEn() })).datos.resumen.total;
+  assert.equal(despues - antes, 10000 + melo.precio, 'la contabilidad suma exactamente lo cobrado');
+});
+
 test('la contabilidad muestra las mismas cifras que la base de datos', async () => {
   await irA('contabilidad', '[data-kpi="total"]');
   const r = (await rpc('reporte_ventas', { p_desde: hoyEn(), p_hasta: hoyEn() })).datos;

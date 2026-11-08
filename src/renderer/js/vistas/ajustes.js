@@ -26,14 +26,24 @@ export async function montar(contenedor, ctx) {
       <section class="tarjeta tarjeta--ancha" data-festividades></section>
 
       <section class="tarjeta"><form class="tarjeta-cuerpo ajuste" data-destacado>
-        <h3>Producto destacado en la web</h3>
-        <p>Aparece en la franja roja de la página principal.</p>
-        <label class="campo"><span>Producto</span><select name="producto">
-          <option value="">— Ninguno (ocultar la franja) —</option>
+        <h3>Portada de la web</h3>
+        <p>El plato que elijas sale grande al inicio de la página, con su foto, su nombre y su precio. Al tocarlo, el cliente lo agrega a su pedido.</p>
+        <label class="campo"><span>Plato de la portada</span><select name="producto">
+          <option value="">— Ninguno (foto de la marca) —</option>
           ${menu.productos.filter((p) => p.activo).map((p) => html`<option value="${p.id}" ${p.id === a.producto_destacado_id ? 'selected' : ''}>${p.nombre}</option>`)}
         </select></label>
-        <label class="campo"><span>Título pequeño</span><input name="titulo" maxlength="40" value="${a.titulo_destacado}"></label>
-        <button class="btn btn--primario" type="submit" style="justify-self:start">Guardar destacado</button>
+        <label class="campo"><span>Frase pequeña</span><input name="titulo" maxlength="40" value="${a.titulo_destacado}" placeholder="Ej: La más pedida"></label>
+        <button class="btn btn--primario" type="submit" style="justify-self:start">Guardar portada</button>
+      </form></section>
+
+      <section class="tarjeta"><form class="tarjeta-cuerpo ajuste" data-bebidas>
+        <h3>Bebidas para elegir</h3>
+        <p>Las que el cliente puede escoger en los combos que traen gaseosa y en las micheladas. Una por línea.</p>
+        <div class="fila-campos">
+          <label class="campo"><span>Gaseosas</span><textarea name="gaseosas" rows="6">${(a.bebidas_gaseosa ?? []).join('\n')}</textarea></label>
+          <label class="campo"><span>Para micheladas</span><textarea name="micheladas" rows="6">${(a.bebidas_michelada ?? []).join('\n')}</textarea></label>
+        </div>
+        <button class="btn btn--primario" type="submit" style="justify-self:start">Guardar bebidas</button>
       </form></section>
 
       <section class="tarjeta"><div class="tarjeta-cuerpo ajuste">
@@ -203,7 +213,18 @@ export async function montar(contenedor, ctx) {
   });
   $('[data-destacado]', contenedor).addEventListener('submit', (e) => {
     e.preventDefault();
-    guardar({ producto_destacado_id: e.target.producto.value || null, titulo_destacado: e.target.titulo.value }, 'Destacado actualizado en la web');
+    // La portada usa siempre la foto del plato elegido
+    guardar({ producto_destacado_id: e.target.producto.value || null, titulo_destacado: e.target.titulo.value, foto_destacado_url: null }, 'Portada actualizada en la web');
+  });
+  $('[data-bebidas]', contenedor).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const lista = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
+    try {
+      await ctx.api.guardarBebidas({ gaseosas: lista(e.target.gaseosas.value), bebidas_michelada: lista(e.target.micheladas.value) });
+      avisar('Bebidas actualizadas en la web');
+    } catch (err) {
+      avisar(mensajeError(err), 'error');
+    }
   });
   $('[data-tecnico]', contenedor).addEventListener('submit', (e) => {
     e.preventDefault();

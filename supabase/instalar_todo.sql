@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Quechimba Burger · INSTALACIÓN COMPLETA (generado automáticamente)
 -- Pegar TODO en Supabase → SQL Editor → Run. Ejecutar UNA sola vez en un
--- proyecto nuevo. Incluye: 9 migraciones + menú inicial.
+-- proyecto nuevo. Incluye: 10 migraciones + menú inicial.
 -- No editar aquí: editar supabase/migrations y correr "npm run sql:unificar".
 -- =====================================================================
 
@@ -1706,11 +1706,489 @@ before insert or update of metodo_pago on public.pedidos
 for each row execute function public.tg_pago_permitido();
 
 
+-- >>>>>>>>>> 20261108000010_opciones.sql
+-- =====================================================================
+-- Quechimba Burger · 10 · Opciones al pedir (bebida del combo, en agua o
+-- en leche, nivel de la michelada, con o sin papas…)
+-- • productos.opciones: grupos de opciones del producto, por ejemplo
+--     [{ "titulo": "Preparación", "elige": 1,
+--        "opciones": [{ "nombre": "En agua", "extra": 0 }, { "nombre": "En leche", "extra": 2000 }] },
+--      { "titulo": "Gaseosas", "elige": 2, "lista": "gaseosas" }]
+--   "lista" toma las opciones de Ajustes (gaseosas o bebidas para michelada),
+--   así el dueño cambia las bebidas disponibles en un solo lugar.
+-- • El cliente solo envía QUÉ eligió; el precio (base + extras) lo calcula
+--   SIEMPRE el servidor.
+-- • pedido_items.detalle guarda lo elegido ("Gaseosas: Coca-Cola, Pepsi")
+--   para la cocina, WhatsApp y el historial.
+-- Segura de ejecutar más de una vez.
+-- =====================================================================
+
+-- ---------- Validación de la estructura de opciones ----------
+create or replace function public._opciones_validas(p jsonb)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  g jsonb;
+  o jsonb;
+  v_nombres text[];
+begin
+  if p is null or jsonb_typeof(p) <> 'array' or jsonb_array_length(p) > 6 then return false; end if;
+  for g in select * from jsonb_array_elements(p) loop
+    if jsonb_typeof(g) <> 'object'
+       or jsonb_typeof(g -> 'titulo') <> 'string' or char_length(btrim(g ->> 'titulo')) not between 1 and 30
+       or jsonb_typeof(g -> 'elige') <> 'number' or (g ->> 'elige')::numeric not in (1, 2, 3, 4, 5) then
+      return false;
+    end if;
+    if g ? 'lista' then
+      if (g ->> 'lista') not in ('gaseosas', 'bebidas_michelada') or g ? 'opciones' then return false; end if;
+    else
+      if jsonb_typeof(g -> 'opciones') <> 'array' or jsonb_array_length(g -> 'opciones') not between 2 and 20 then return false; end if;
+      v_nombres := '{}';
+      for o in select * from jsonb_array_elements(g -> 'opciones') loop
+        if jsonb_typeof(o) <> 'object'
+           or jsonb_typeof(o -> 'nombre') <> 'string' or char_length(btrim(o ->> 'nombre')) not between 1 and 40
+           or jsonb_typeof(o -> 'extra') <> 'number' or (o ->> 'extra')::numeric <> trunc((o ->> 'extra')::numeric)
+           or (o ->> 'extra')::numeric not between 0 and 1000000
+           or (o ->> 'nombre') = any (v_nombres) then
+          return false;
+        end if;
+        v_nombres := v_nombres || (o ->> 'nombre');
+      end loop;
+    end if;
+  end loop;
+  return true;
+end
+$$;
+
+-- Lista de bebidas válida: 1 a 30 nombres distintos de 1 a 40 caracteres
+create or replace function public._lista_bebidas_valida(p text[])
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p is not null and cardinality(p) between 1 and 30
+     and (select count(distinct x) from unnest(p) x) = cardinality(p)
+     and not exists (select 1 from unnest(p) x where x is null or char_length(btrim(x)) not between 1 and 40)
+$$;
+
+alter table public.productos add column if not exists opciones jsonb not null default '[]'::jsonb;
+alter table public.productos drop constraint if exists productos_opciones_validas;
+alter table public.productos add constraint productos_opciones_validas check (public._opciones_validas(opciones));
+
+alter table public.pedido_items add column if not exists detalle text;
+alter table public.pedido_items drop constraint if exists pedido_items_detalle_largo;
+alter table public.pedido_items add constraint pedido_items_detalle_largo check (detalle is null or char_length(detalle) <= 300);
+
+alter table public.ajustes add column if not exists bebidas_gaseosa text[] not null
+  default array['Coca-Cola', 'Coca-Cola Zero', 'Postobón Manzana', 'Postobón Colombiana', 'Pepsi', 'Ginger'];
+alter table public.ajustes add column if not exists bebidas_michelada text[] not null
+  default array['Ginger', 'Bretaña', 'Soda Hatsu', 'Bretaña Hard Seltzer', 'Like', 'Cuates', 'Smirnoff', 'Club Colombia',
+                'Coronita', 'Miller Lite', 'Águila', 'Budweiser', 'Heineken', 'Cola y Pola', 'Póker'];
+alter table public.ajustes drop constraint if exists ajustes_bebidas_validas;
+alter table public.ajustes add constraint ajustes_bebidas_validas
+  check (public._lista_bebidas_valida(bebidas_gaseosa) and public._lista_bebidas_valida(bebidas_michelada));
+
+-- ---------- Aplica lo que eligió el cliente: devuelve el extra por unidad y el detalle ----------
+-- p_elegidas: un arreglo por grupo, en el mismo orden: [["En leche"], ["Coca-Cola", "Pepsi"]]
+create or replace function public._aplicar_opciones(p_prod public.productos, p_elegidas jsonb, out extra int, out detalle text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_grupos jsonb := coalesce(p_prod.opciones, '[]'::jsonb);
+  v_grupo  jsonb;
+  v_elige  jsonb;
+  v_nombre text;
+  v_validas jsonb;
+  v_partes text[] := '{}';
+  v_i      int := 0;
+  v_opcion jsonb;
+begin
+  extra := 0;
+  detalle := null;
+  if jsonb_array_length(v_grupos) = 0 then
+    if p_elegidas is not null and jsonb_typeof(p_elegidas) = 'array' and jsonb_array_length(p_elegidas) > 0 then
+      perform public._error('DATO_INVALIDO', format('"%s" no tiene opciones para elegir', p_prod.nombre));
+    end if;
+    return;
+  end if;
+  if p_elegidas is null or jsonb_typeof(p_elegidas) <> 'array' or jsonb_array_length(p_elegidas) <> jsonb_array_length(v_grupos) then
+    perform public._error('OPCIONES_INCOMPLETAS', format('Elige las opciones de "%s"', p_prod.nombre));
+  end if;
+
+  for v_grupo in select * from jsonb_array_elements(v_grupos) loop
+    v_elige := p_elegidas -> v_i;
+    if jsonb_typeof(v_elige) <> 'array' or jsonb_array_length(v_elige) <> (v_grupo ->> 'elige')::int then
+      perform public._error('OPCIONES_INCOMPLETAS', format('En "%s" elige %s de %s', p_prod.nombre, v_grupo ->> 'elige', lower(v_grupo ->> 'titulo')));
+    end if;
+    v_validas := case v_grupo ->> 'lista'
+      when 'gaseosas' then (select to_jsonb(bebidas_gaseosa) from public.ajustes where id = 1)
+      when 'bebidas_michelada' then (select to_jsonb(bebidas_michelada) from public.ajustes where id = 1)
+      else (select jsonb_agg(o ->> 'nombre') from jsonb_array_elements(v_grupo -> 'opciones') o)
+    end;
+    for v_nombre in select x from jsonb_array_elements_text(v_elige) x loop
+      if not v_validas ? v_nombre then
+        perform public._error('OPCION_NO_EXISTE', format('"%s" ya no está disponible para "%s"', v_nombre, p_prod.nombre));
+      end if;
+      select o into v_opcion from jsonb_array_elements(v_grupo -> 'opciones') o where o ->> 'nombre' = v_nombre;
+      extra := extra + coalesce((v_opcion ->> 'extra')::int, 0);
+      v_opcion := null;
+    end loop;
+    v_partes := v_partes || format('%s: %s', v_grupo ->> 'titulo', (select string_agg(x, ', ') from jsonb_array_elements_text(v_elige) x));
+    v_i := v_i + 1;
+  end loop;
+  detalle := left(array_to_string(v_partes, ' · '), 300);
+end
+$$;
+revoke all on function public._aplicar_opciones(public.productos, jsonb) from public, anon, authenticated;
+revoke all on function public._opciones_validas(jsonb) from public, anon, authenticated;
+revoke all on function public._lista_bebidas_valida(text[]) from public, anon, authenticated;
+
+-- ---------- Ítems del pedido con opciones ----------
+-- p_lineas: [{ "slug": "...", "cantidad": 2, "opciones": [["Coca-Cola", "Pepsi"]] }]
+-- • Web (p_solo_disponibles): las opciones son obligatorias en los productos que las tienen.
+-- • Caja (personal): si no se envían opciones se registra el precio base sin detalle
+--   (versiones anteriores de la app); si se envían, se validan igual que en la web.
+-- Las líneas del mismo producto CON LO MISMO ELEGIDO se suman.
+create or replace function public._insertar_items(p_pedido uuid, p_lineas jsonb, p_solo_disponibles boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_linea jsonb;
+  v_cant  int;
+  v_prod  public.productos%rowtype;
+  v_cat   text;
+  v_extra int;
+  v_det   text;
+  v_mapa  jsonb := '{}'::jsonb;   -- "producto_id|detalle" → { cantidad, extra, detalle }
+  v_clave text;
+begin
+  if p_lineas is null or jsonb_typeof(p_lineas) <> 'array' or jsonb_array_length(p_lineas) = 0 then
+    perform public._error('PEDIDO_VACIO', 'El pedido no tiene productos');
+  end if;
+  if jsonb_array_length(p_lineas) > 40 then
+    perform public._error('DATO_INVALIDO', 'El pedido tiene demasiados productos distintos');
+  end if;
+
+  for v_linea in select * from jsonb_array_elements(p_lineas) loop
+    if jsonb_typeof(v_linea) <> 'object' then
+      perform public._error('DATO_INVALIDO', 'Formato de producto inválido');
+    end if;
+    v_cant := public._entero(v_linea, 'cantidad', 1, 99);
+
+    if v_linea ? 'producto_id' then
+      begin
+        select * into v_prod from public.productos where id = (v_linea ->> 'producto_id')::uuid;
+      exception when invalid_text_representation then
+        perform public._error('DATO_INVALIDO', 'Identificador de producto inválido');
+      end;
+    else
+      select * into v_prod from public.productos where slug = public._texto(v_linea, 'slug', 80, true);
+    end if;
+
+    if v_prod.id is null then
+      perform public._error('PRODUCTO_NO_EXISTE', 'Uno de los productos ya no existe en el menú');
+    end if;
+    if p_solo_disponibles and (not v_prod.activo or v_prod.agotado) then
+      perform public._error('PRODUCTO_NO_DISPONIBLE', format('"%s" no está disponible en este momento', v_prod.nombre));
+    end if;
+
+    if not p_solo_disponibles and not (v_linea ? 'opciones') then
+      v_extra := 0; v_det := null;          -- caja sin opciones (app anterior)
+    else
+      select o.extra, o.detalle into v_extra, v_det from public._aplicar_opciones(v_prod, v_linea -> 'opciones') o;
+    end if;
+
+    v_clave := v_prod.id::text || '|' || coalesce(v_det, '');
+    v_mapa := jsonb_set(v_mapa, array[v_clave], jsonb_build_object(
+      'cantidad', coalesce((v_mapa -> v_clave ->> 'cantidad')::int, 0) + v_cant,
+      'extra', v_extra, 'detalle', v_det));
+    v_prod := null;
+  end loop;
+
+  for v_clave, v_linea in select * from jsonb_each(v_mapa) loop
+    v_cant := (v_linea ->> 'cantidad')::int;
+    if v_cant > 99 then
+      perform public._error('DATO_INVALIDO', 'Máximo 99 unidades por producto');
+    end if;
+    select * into v_prod from public.productos where id = split_part(v_clave, '|', 1)::uuid;
+    select nombre into v_cat from public.categorias where id = v_prod.categoria_id;
+    insert into public.pedido_items (pedido_id, producto_id, nombre_producto, categoria_nombre, precio_unitario, cantidad, detalle)
+    values (p_pedido, v_prod.id, v_prod.nombre, coalesce(v_cat, ''), v_prod.precio + (v_linea ->> 'extra')::int, v_cant, v_linea ->> 'detalle');
+  end loop;
+end
+$$;
+
+-- ---------- Pedido en JSON: incluye el detalle de cada línea ----------
+create or replace function public._pedido_json(p_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'id', p.id, 'numero', p.numero, 'canal', p.canal, 'estado', p.estado,
+    'tipo_entrega', p.tipo_entrega, 'metodo_pago', p.metodo_pago,
+    'cliente_nombre', p.cliente_nombre, 'cliente_telefono', p.cliente_telefono,
+    'direccion', p.direccion, 'notas', p.notas,
+    'subtotal', p.subtotal, 'costo_domicilio', p.costo_domicilio, 'descuento', p.descuento, 'total', p.total,
+    'motivo_cancelacion', p.motivo_cancelacion,
+    'creado_en', p.creado_en, 'entregado_en', p.entregado_en, 'cancelado_en', p.cancelado_en,
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'producto_id', i.producto_id, 'nombre', i.nombre_producto, 'categoria', i.categoria_nombre,
+        'precio_unitario', i.precio_unitario, 'cantidad', i.cantidad, 'subtotal', i.subtotal, 'detalle', i.detalle
+      ) order by i.nombre_producto, i.detalle nulls first)
+      from public.pedido_items i where i.pedido_id = p.id
+    ), '[]'::jsonb)
+  )
+  from public.pedidos p
+  where p.id = p_id
+$$;
+
+-- ---------- Menú público: opciones de cada producto y listas de bebidas ----------
+create or replace function public.menu_publico()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with prods as (
+    select p.*, c.slug as cat_slug, c.orden as cat_orden
+    from public.productos p
+    join public.categorias c on c.id = p.categoria_id
+    where p.activo and c.activa
+  )
+  select jsonb_build_object(
+    'pedidos_web_activos', a.pedidos_web_activos,
+    'festividad', public._tema_efectivo(),
+    'destacado', (
+      select jsonb_build_object('producto', d.slug, 'titulo', a.titulo_destacado, 'foto_url', a.foto_destacado_url)
+      from prods d where d.id = a.producto_destacado_id
+    ),
+    'bebidas', jsonb_build_object('gaseosas', to_jsonb(a.bebidas_gaseosa), 'bebidas_michelada', to_jsonb(a.bebidas_michelada)),
+    'categorias', coalesce((
+      select jsonb_agg(jsonb_build_object('slug', c.slug, 'nombre', c.nombre) order by c.orden, c.nombre)
+      from public.categorias c
+      where c.activa and exists (select 1 from prods p where p.categoria_id = c.id)
+    ), '[]'::jsonb),
+    'productos', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'slug', p.slug, 'categoria', p.cat_slug, 'nombre', p.nombre, 'descripcion', p.descripcion,
+        'precio', p.precio, 'etiqueta', p.etiqueta, 'foto_url', p.foto_url, 'agotado', p.agotado,
+        'opciones', p.opciones
+      ) order by p.cat_orden, p.orden, p.nombre)
+      from prods p
+    ), '[]'::jsonb)
+  )
+  from public.ajustes a
+  where a.id = 1
+$$;
+
+-- ---------- Menú para administrar: incluye las opciones ----------
+create or replace function public.menu_admin()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  perform public._requiere_staff();
+  return jsonb_build_object(
+    'categorias', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'slug', c.slug, 'nombre', c.nombre, 'orden', c.orden, 'activa', c.activa,
+        'num_productos', (select count(*) from public.productos p where p.categoria_id = c.id)
+      ) order by c.orden, c.nombre)
+      from public.categorias c
+    ), '[]'::jsonb),
+    'productos', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', p.id, 'slug', p.slug, 'categoria_id', p.categoria_id, 'nombre', p.nombre,
+        'descripcion', p.descripcion, 'precio', p.precio, 'etiqueta', p.etiqueta, 'foto_url', p.foto_url,
+        'activo', p.activo, 'agotado', p.agotado, 'orden', p.orden, 'opciones', p.opciones,
+        'tiene_ventas', exists (select 1 from public.pedido_items i where i.producto_id = p.id)
+      ) order by c.orden, p.orden, p.nombre)
+      from public.productos p join public.categorias c on c.id = p.categoria_id
+    ), '[]'::jsonb),
+    'ajustes', (select to_jsonb(a) - 'id' from public.ajustes a where a.id = 1)
+  );
+end
+$$;
+
+-- ---------- Guardar producto: acepta opciones (si no se envían, se conservan) ----------
+create or replace function public.producto_guardar(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id     uuid;
+  v_cat    uuid;
+  v_nombre text := public._texto(p, 'nombre', 60, true);
+  v_desc   text := public._texto(p, 'descripcion', 240);
+  v_precio int  := public._entero(p, 'precio', 0, 5000000);
+  v_etiq   text := nullif(public._texto(p, 'etiqueta', 24), '');
+  v_foto   text := nullif(public._texto(p, 'foto_url', 2000000), '');
+  v_activo boolean := public._booleano(p, 'activo', true);
+  v_agot   boolean := public._booleano(p, 'agotado', false);
+  v_orden  int  := public._entero(p, 'orden', -1000, 100000, 0);
+  v_opc    jsonb := p -> 'opciones';
+  v_fila   public.productos%rowtype;
+begin
+  perform public._requiere_staff();
+  begin
+    v_cat := (p ->> 'categoria_id')::uuid;
+  exception when invalid_text_representation then
+    perform public._error('DATO_INVALIDO', 'Categoría inválida');
+  end;
+  if v_cat is null or not exists (select 1 from public.categorias where id = v_cat) then
+    perform public._error('DATO_INVALIDO', 'Elige una categoría válida');
+  end if;
+  if v_opc is not null and not public._opciones_validas(v_opc) then
+    perform public._error('DATO_INVALIDO', 'Las opciones del producto no son válidas');
+  end if;
+
+  if p ? 'id' and jsonb_typeof(p -> 'id') = 'string' then
+    v_id := (p ->> 'id')::uuid;
+    update public.productos
+       set categoria_id = v_cat, nombre = v_nombre, descripcion = v_desc, precio = v_precio,
+           etiqueta = v_etiq, foto_url = v_foto, activo = v_activo, agotado = v_agot, orden = v_orden,
+           opciones = coalesce(v_opc, opciones)
+     where id = v_id
+    returning * into v_fila;
+    if v_fila.id is null then
+      perform public._error('NO_EXISTE', 'El producto no existe');
+    end if;
+  else
+    insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, agotado, orden, opciones)
+    values (public._slug_unico(v_nombre, 'productos'), v_cat, v_nombre, v_desc, v_precio, v_etiq, v_foto, v_activo, v_agot, v_orden, coalesce(v_opc, '[]'::jsonb))
+    returning * into v_fila;
+  end if;
+  return to_jsonb(v_fila);
+end
+$$;
+
+-- ---------- Listas de bebidas (las edita el dueño en Ajustes) ----------
+-- p: { gaseosas?: ["Coca-Cola", ...], bebidas_michelada?: [...] }
+create or replace function public.bebidas_guardar(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_gas text[];
+  v_mich text[];
+  v_fila public.ajustes%rowtype;
+begin
+  perform public._requiere_staff();
+  select * into v_fila from public.ajustes where id = 1;
+  begin
+    v_gas := case when p ? 'gaseosas' then array(select btrim(x) from jsonb_array_elements_text(p -> 'gaseosas') x) else v_fila.bebidas_gaseosa end;
+    v_mich := case when p ? 'bebidas_michelada' then array(select btrim(x) from jsonb_array_elements_text(p -> 'bebidas_michelada') x) else v_fila.bebidas_michelada end;
+  exception when others then
+    perform public._error('DATO_INVALIDO', 'Las listas de bebidas deben ser listas de nombres');
+  end;
+  if not public._lista_bebidas_valida(v_gas) or not public._lista_bebidas_valida(v_mich) then
+    perform public._error('DATO_INVALIDO', 'Cada lista necesita entre 1 y 30 bebidas distintas, de máximo 40 letras');
+  end if;
+  update public.ajustes set bebidas_gaseosa = v_gas, bebidas_michelada = v_mich where id = 1 returning * into v_fila;
+  return jsonb_build_object('gaseosas', to_jsonb(v_fila.bebidas_gaseosa), 'bebidas_michelada', to_jsonb(v_fila.bebidas_michelada));
+end
+$$;
+revoke all on function public.bebidas_guardar(jsonb) from public, anon;
+grant execute on function public.bebidas_guardar(jsonb) to authenticated;
+
+-- ---------- Pedido web: la respuesta incluye lo elegido (para el mensaje de WhatsApp) ----------
+-- Crea un pedido desde la web. Devuelve número y total calculados en el servidor.
+-- p_cliente: { nombre, telefono?, tipo_entrega: 'domicilio'|'recoger', direccion?, metodo_pago, notas? }
+create or replace function public.crear_pedido_web(p_items jsonb, p_cliente jsonb)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_activos boolean;
+  v_entrega public.tipo_entrega;
+  v_pago    public.metodo_pago;
+  v_dir     text;
+  v_tel     text;
+  v_id      uuid;
+  v_ped     jsonb;
+begin
+  select pedidos_web_activos into v_activos from public.ajustes where id = 1;
+  if not coalesce(v_activos, false) then
+    perform public._error('PEDIDOS_PAUSADOS', 'En este momento no estamos recibiendo pedidos en línea');
+  end if;
+
+  -- Protección básica contra inundación de pedidos falsos
+  if (select count(*) from public.pedidos where canal = 'web' and creado_en > now() - interval '10 minutes') >= 60 then
+    perform public._error('DEMASIADOS_PEDIDOS', 'Estamos recibiendo muchos pedidos; intenta de nuevo en unos minutos');
+  end if;
+
+  if p_cliente is null or jsonb_typeof(p_cliente) <> 'object' then
+    perform public._error('DATO_INVALIDO', 'Faltan los datos del cliente');
+  end if;
+
+  begin
+    v_entrega := public._texto(p_cliente, 'tipo_entrega', 20, true)::public.tipo_entrega;
+    v_pago    := public._texto(p_cliente, 'metodo_pago', 20, true)::public.metodo_pago;
+  exception when invalid_text_representation then
+    perform public._error('DATO_INVALIDO', 'Tipo de entrega o método de pago inválido');
+  end;
+  if v_entrega = 'en_local' then
+    perform public._error('DATO_INVALIDO', 'Tipo de entrega inválido');
+  end if;
+
+  v_dir := public._texto(p_cliente, 'direccion', 140, v_entrega = 'domicilio');
+  v_tel := public._texto(p_cliente, 'telefono', 20);
+  if v_tel <> '' and v_tel !~ '^[0-9+ ()-]{7,20}$' then
+    perform public._error('DATO_INVALIDO', 'Teléfono inválido');
+  end if;
+
+  insert into public.pedidos (canal, estado, tipo_entrega, metodo_pago, cliente_nombre, cliente_telefono, direccion, notas)
+  values ('web', 'nuevo', v_entrega, v_pago,
+          public._texto(p_cliente, 'nombre', 60, true), v_tel,
+          case when v_entrega = 'domicilio' then v_dir else '' end,
+          public._texto(p_cliente, 'notas', 240))
+  returning id into v_id;
+
+  perform public._insertar_items(v_id, p_items, true);
+
+  v_ped := public._pedido_json(v_id);
+  -- A la web solo se le devuelve lo necesario
+  return jsonb_build_object(
+    'numero', v_ped -> 'numero', 'subtotal', v_ped -> 'subtotal', 'total', v_ped -> 'total',
+    'items', (select jsonb_agg(jsonb_build_object('nombre', i -> 'nombre', 'cantidad', i -> 'cantidad',
+                                                  'precio_unitario', i -> 'precio_unitario', 'subtotal', i -> 'subtotal',
+                                                  'detalle', i -> 'detalle'))
+              from jsonb_array_elements(v_ped -> 'items') i)
+  );
+end
+$$;
+
+
 -- >>>>>>>>>> seed.sql
 -- =====================================================================
 -- Quechimba Burger · Menú real (instalación nueva y modo demo)
 -- GENERADO desde supabase/menu.mjs con "npm run menu:generar". No editar aquí.
--- 11 categorías · 112 productos (15 ocultos hasta tener precio)
+-- 11 categorías · 96 productos (0 ocultos hasta tener precio)
 -- =====================================================================
 
 insert into public.categorias (slug, nombre, orden) values
@@ -1726,129 +2204,115 @@ insert into public.categorias (slug, nombre, orden) values
   ('jugos', 'Jugos naturales', 10),
   ('bebidas', 'Bebidas', 11);
 
-insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
-select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden
+insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
+select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden, v.opciones
 from (values
-  ('mini-burger', 'hamburguesas', 'Mini Burger', '60 g de carne.', 6000, null, 'assets/img/menu/mini-burgers.webp', true, 1),
-  ('chimbita-burger', 'hamburguesas', 'Chimbita Burger', '150 g de carne, queso mozzarella, doble tocineta, jamón, pepinillo, cebolla y tocineta caramelizada, pan ajonjolí o artesanal, papas y gaseosa.', 23000, null, 'assets/img/menu/chimbita.webp', true, 2),
-  ('doble-chimba', 'hamburguesas', 'Doble Chimba', '230 g de carne, doble tocineta, doble mozzarella, pepinillo, cebolla caramelizada, pan artesanal, papas y gaseosa.', 30000, null, 'assets/img/menu/doble-chimba.webp', true, 3),
-  ('classic-burger', 'hamburguesas', 'Classic Burger', '130 g de carne, tocineta, cebolla caramelizada, mozzarella, lechuga y papas.', 17000, null, 'assets/img/menu/classic.webp', true, 4),
-  ('burger-chori', 'hamburguesas', 'Burger Chori', '130 g de carne y chorizo, doble tocineta, doble queso mozzarella, cebolla caramelizada, salsas de la casa, papas y gaseosa.', 25000, null, 'assets/img/menu/burger-chori.webp', true, 5),
-  ('la-grilla', 'hamburguesas', 'La Grilla', '150 g de carne, queso costeño asado, chorizo asado, tocineta y cebolla caramelizada, pepinillo, papas y gaseosa.', 25000, null, 'assets/img/menu/la-grilla.webp', true, 6),
-  ('la-de-pollo', 'hamburguesas', 'La de Pollo', '130 g de carne de pollo y papas.', 17000, null, 'assets/img/menu/la-de-pollo.webp', true, 7),
-  ('la-mixta', 'hamburguesas', 'La Mixta', 'Carne de res, carne de pollo apanado crocante, 3 tocinetas, 2 jamones, 2 mozzarellas, papas y gaseosa.', 30000, null, 'assets/img/menu/la-mixta.webp', true, 8),
-  ('smash-burger', 'hamburguesas', 'Smash Burger', 'Doble carne smash, cebolla asada, mozzarella y tocineta. ¡Que no falte! Porción de papas y Coca-Cola.', 30000, 'La más chimba', 'assets/img/menu/smash.webp', true, 9),
-  ('dorichimba', 'hamburguesas', 'Dorichimba', '200 g de carne artesanal ¡una chimba!, mozzarella, cebolla asada, un paquete de Doritos, papas y Coca-Cola.', 30000, '¡De locos!', 'assets/img/menu/dorichimba.webp', true, 10),
-  ('montanera', 'hamburguesas', 'Montañera', 'Carne Angus, mozzarella, queso asado y bañado en miel, piña asada, tajadas de maduro, salsa súper de la casa, papas y Coca-Cola.', 30000, null, 'assets/img/menu/montanera.webp', true, 11),
-  ('triple-chimba-burger', 'hamburguesas', 'Triple Chimba Burger', '3 carnes Angus, 5 tocinetas, 4 jamones, 4 mozzarellas, pepinillo, papa y Coca-Cola PET 400.', 35000, null, 'assets/img/menu/triple-chimba.webp', true, 12),
-  ('combo-x4', 'combitos', 'Combo x4', '4 mini burger y 1 porción de papas.', 24000, null, 'assets/img/menu/combo-x4.webp', true, 1),
-  ('combo-melo', 'combitos', 'Combo Melo', '1 Chimbita Burger, 1 Classic Burger, 2 porciones de papas y 2 gaseosas.', 45000, null, 'assets/img/menu/combo-melo.webp', true, 2),
-  ('chimba-de-combo', 'combitos', 'Chimba de Combo', '1 Classic Burger, 1 hamburguesa mixta, 2 porciones de papas y 2 gaseosas.', 45000, null, 'assets/img/menu/combo-plato.webp', true, 3),
-  ('combo-chimbita', 'combitos', 'Combo Chimbita', '1 Chimbita Burger, 1 Dorichimba, 1 Classic Burger, 3 porciones de papas y 3 gaseosas.', 60000, null, 'assets/img/menu/chimbita.webp', true, 4),
-  ('combo-gorditas', 'combitos', 'Combo Gorditas', '2 mini burger especiales, 1 porción de papas y 1 gaseosa.', 25000, null, 'assets/img/menu/combo-minis.webp', true, 5),
-  ('combo-chuzito', 'combitos', 'Combo Chuzito', '1 chuzo mixto, 1 mini burger, 1 porción de papa, 1 arepa y 1 gaseosa.', 22000, null, 'assets/img/menu/combo-chuzito.webp', true, 6),
-  ('combo-remelo', 'combitos', 'Combo Remelo', '1 salchi de 30K, 1 Classic Burger, 1 porción de papas y 1 gaseosa.', 50000, null, 'assets/img/menu/salchi-30k.webp', true, 7),
-  ('combo-1', 'combos', 'Combo 1', '1 hamburguesa mixta (120 g de carne y 120 g de pollo), 1 perro americano, 2 porciones de papas y 1 gaseosa.', 45000, null, 'assets/img/menu/perro-americano.webp', true, 1),
-  ('combo-2', 'combos', 'Combo 2', '1 perro de $15.000 (a elección), 1 Chimba Burger, 2 porciones de papas y 2 gaseosas.', 40000, null, 'assets/img/menu/perro-ranchero.webp', true, 2),
-  ('combo-3', 'combos', 'Combo 3', '3 mini burger, 1 porción de papas grandes y 1 gaseosa.', 20000, null, 'assets/img/menu/combo-3.webp', true, 3),
-  ('combo-4', 'combos', 'Combo 4', '2 Classic Burger, 2 papas, 2 gaseosas y 1 mini perro.', 40000, null, 'assets/img/menu/combo-miniperros.webp', true, 4),
-  ('combo-5', 'combos', 'Combo 5', '1 cajita de pollo, 1 perro sencillo, 1 porción de papas y 1 gaseosa.', 30000, null, 'assets/img/menu/cajita-feliz.webp', true, 5),
-  ('combo-6', 'combos', 'Combo 6', '1 salchi sencilla, 1 perro sencillo y 1 gaseosa.', 25000, null, 'assets/img/menu/salchi-sencilla.webp', true, 6),
-  ('combo-7', 'combos', 'Combo 7', '1 hamburguesa mixta, 1 salchi sencilla, 1 perro sencillo, 1 porción de papas y 2 gaseosas.', 50000, null, 'assets/img/menu/combo-plato.webp', true, 7),
-  ('combo-8', 'combos', 'Combo 8', '1 salchi de 30, 1 Chimbita Burger, 1 porción de papas y 2 gaseosas.', 50000, null, 'assets/img/menu/salchichimba.webp', true, 8),
-  ('combo-9', 'combos', 'Combo 9', '1 salchi de 50, 1 Chimbita Burger, 1 perro americano, 2 porciones de papas y 1 gaseosa.', 85000, null, 'assets/img/menu/salchi-50k.webp', true, 9),
-  ('combo-10', 'combos', 'Combo 10', '1 Salchichimba, 1 Chimbita Burger, 1 perro de $15.000 (a elección), 2 porciones de papas y 1 litro de Postobón.', 60000, null, 'assets/img/menu/desgaranado.webp', true, 10),
-  ('rompedieta', 'combos', 'Rompedieta', '2 smash burger, tocineta con papas, aros de cebolla y Doritos. ¡La caja más chimba!', 50000, 'La caja más chimba', 'assets/img/menu/rompedieta.webp', true, 11),
-  ('combo-aletoso', 'combos', 'Combo Aletoso', '6 alitas bañadas en salsa de la casa (opcional) con papas.', 20000, null, null, true, 12),
-  ('salchi-sencilla', 'salchipapas', 'Salchi Sencilla', 'Papas, chorizo, salchicha, butifarra, lechuga, queso rallado y salsas de la casa.', 15000, null, 'assets/img/menu/salchi-sencilla.webp', true, 1),
-  ('salchichimba', 'salchipapas', 'Salchichimba', 'Papas, chorizo, salchicha ranchera, butifarra, carne, pollo, maíz tierno, queso mozzarella, ripio de papa, lechuga, queso rallado y salsas de la casa.', 23000, null, 'assets/img/menu/salchichimba.webp', true, 2),
-  ('la-de-30k', 'salchipapas', 'La de 30K', 'Lo mismo de la Salchichimba pero en más cantidad, con salchicha súper ranchera y huevo de codorniz.', 30000, null, 'assets/img/menu/salchi-30k.webp', true, 3),
-  ('la-de-50k', 'salchipapas', 'La de 50K', 'Más cantidad que «La de 30K», con 2 súper rancheras, tocineta y huevo de codorniz.', 50000, 'Para 5 personas', 'assets/img/menu/salchi-50k.webp', true, 4),
-  ('la-de-80k', 'salchipapas', 'La de 80K', 'Salchicha suiza, ranchera, de pollo y americana, chorizo santandereano, butifarra, carne de res, pollo en trozos, carne y pollo desmechado ¡y todo lo demás! Que chimba.', 80000, null, 'assets/img/menu/desgaranado.webp', true, 5),
-  ('ranchera-personal', 'salchipapas', 'La Ranchera Personal', 'Salchicha ranchera, papas, lechuga, queso rallado, papa ripio, salsas de la casa, piña rosada y tártara.', 18000, null, 'assets/img/menu/salchi-30k.webp', true, 6),
-  ('ranchera-para-2', 'salchipapas', 'La Ranchera para 2', 'Salchicha ranchera, súper ranchera, carne y pollo asado.', 30000, 'Para 2', 'assets/img/menu/salchi-50k.webp', true, 7),
-  ('mini-perro', 'perros', 'Mini Perro', 'Pan mini, salchicha mini, tocineta caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 6000, null, 'assets/img/menu/combo-miniperros.webp', true, 1),
-  ('mini-perro-con-papas', 'perros', 'Mini Perro con papas', 'Pan mini, salchicha mini, tocineta caramelizada, queso mozzarella, ripio de papa, salsas de la casa y papas.', 8000, null, 'assets/img/menu/combo-miniperros.webp', true, 2),
-  ('mini-perro-ranchero', 'perros', 'Mini Perro Ranchero', 'Pan mini, salchicha mini ranchera, tocineta caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 7000, null, 'assets/img/menu/perro-gratinado.webp', true, 3),
-  ('mini-perro-ranchero-con-papas', 'perros', 'Mini Perro Ranchero con papas', 'Pan mini, salchicha mini ranchera, tocineta caramelizada, queso mozzarella, ripio de papa, salsas de la casa y papas.', 9000, null, 'assets/img/menu/perro-gratinado.webp', true, 4),
-  ('el-sencillo', 'perros', 'El Sencillo', 'Salchicha long, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 10000, null, 'assets/img/menu/perro-ranchero.webp', true, 5),
-  ('el-sencillo-con-papas', 'perros', 'El Sencillo con papas', 'Salchicha long, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsas de la casa y papas.', 12000, null, 'assets/img/menu/perro-ranchero.webp', true, 6),
-  ('ranchero-con-papas', 'perros', 'Ranchero con papas', 'Salchicha súper ranchera, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsa de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-ranchero.webp', true, 7),
-  ('americano-con-papas', 'perros', 'Americano con papas', 'Salchicha americana, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsa de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-americano.webp', true, 8),
-  ('chori-perro-con-papas', 'perros', 'Chori Perro con papas', 'Chorizo Zenú, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsas de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-americano.webp', true, 9),
-  ('perro-suizo', 'perros', 'Perro Suizo', 'Salchicha suiza, tocineta x3, mozzarella x3, queso rallado asado y piña. ¡La salchicha se sale del pan!', 25000, null, 'assets/img/menu/perro-gratinado.webp', true, 10),
-  ('perro-triple-chiba', 'perros', 'Perro Triple Chiba', '3 salchichas de pollo asadas, 3 tocinetas, 3 mozzarellas, maíz, piña y queso rallado. Papas y Coca-Cola.', 25000, null, 'assets/img/menu/perro-triple-chiba.webp', true, 11),
-  ('peperroni', 'perros', 'Peperroni', 'Salchicha americana, cebolla asada, mozzarella, tocineta, salsa americana, mostaza y papas.', 16000, 'Picantico', 'assets/img/menu/peperroni.webp', true, 12),
-  ('cajita-de-pollo', 'otras-cositas', 'Cajita de Pollo', 'Pollo en nuggets x12, papas, salsita de maíz, salsita leña y mozzarella.', 16000, null, 'assets/img/menu/cajita-feliz.webp', true, 1),
-  ('cajita-de-pollo-feliz', 'otras-cositas', 'Cajita de Pollo Feliz', '12 nuggets, papas, juguito de caja, chocolatina y ¡regalo sorpresa!', 20000, null, 'assets/img/menu/cajita-feliz.webp', true, 2),
-  ('papa-tornado', 'otras-cositas', 'Papa Tornado', 'Papa frita apanada en espiral con salsa cheddar, salsa de maíz, salsa rosada, piña y queso rallado.', 5000, null, 'assets/img/menu/papa-tornado.webp', true, 3),
-  ('patacon-con-todo', 'otras-cositas', 'Patacón con todo', 'Plátano, hogao, carne y pollo desmechado, queso rallado, salsas y huevo de codorniz.', 15000, null, 'assets/img/menu/picada.webp', true, 4),
-  ('chuzo-mixto', 'otras-cositas', 'Chuzo Mixto', 'Con papas, arepa y queso rallado.', 15000, null, 'assets/img/menu/chuzo-mixto.webp', true, 5),
-  ('desgaranado', 'otras-cositas', 'Desgaranado', 'Pollo, carne, maíz, chorizo, bollo limpio, ripio, salsas de la casa y gaseosa.', 22000, null, 'assets/img/menu/desgaranado.webp', true, 6),
-  ('carne-asada', 'asados', 'Carne asada', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 1),
-  ('pechuga-asada', 'asados', 'Pechuga asada', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 2),
-  ('chuleta-de-cerdo', 'asados', 'Chuleta de cerdo', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 3),
-  ('punta-gorda', 'asados', 'Punta gorda', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 4),
-  ('lomo-fino', 'asados', 'Lomo fino', 'Acompañado con papa frita, yuca o patacón.', 30000, null, 'assets/img/menu/asados.webp', true, 5),
-  ('lomo-de-cerdo', 'asados', 'Lomo de cerdo', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 6),
-  ('costilla-de-cerdo-bbq', 'asados', 'Costilla de cerdo BBQ', 'Acompañado con papa frita, yuca o patacón.', 30000, null, 'assets/img/menu/asados.webp', true, 7),
-  ('churrasco', 'asados', 'Churrasco', 'Acompañado con papa frita, yuca o patacón.', 32000, null, 'assets/img/menu/asados.webp', true, 8),
-  ('picada-20k', 'asados', 'Picada de 20K', 'Carnes asadas para picar. Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/picada.webp', true, 9),
-  ('picada-30k', 'asados', 'Picada de 30K', 'Carnes asadas para picar. Acompañado con papa frita, yuca o patacón.', 30000, null, 'assets/img/menu/picada.webp', true, 10),
-  ('picada-50k', 'asados', 'Picada de 50K', 'Carnes asadas para picar. Acompañado con papa frita, yuca o patacón.', 50000, null, 'assets/img/menu/picada.webp', true, 11),
-  ('picada-80k', 'asados', 'Picada de 80K', 'Carnes asadas para picar. Acompañado con papa frita, yuca o patacón.', 80000, null, 'assets/img/menu/picada.webp', true, 12),
-  ('ceviche-de-chicharron', 'asados', 'Ceviche de chicharrón', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 13),
-  ('chorizo-con-arepa', 'antojitos', 'Chorizo con arepa', '', 9000, null, 'assets/img/menu/picada.webp', true, 1),
-  ('mazorquita', 'antojitos', 'Mazorquita', '', 8000, null, 'assets/img/menu/asados.webp', true, 2),
-  ('patacon-con-hogao', 'antojitos', 'Patacón con hogao', '', 9000, null, 'assets/img/menu/picada.webp', true, 3),
-  ('platano-aborrajado', 'antojitos', 'Plátano aborrajado', '', 8000, null, null, true, 4),
-  ('frutos-rojos-con-todo-normal', 'micheladas', 'Frutos Rojos con todo · Normal', 'Mango, manzana roja, fresa, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-rojos.webp', true, 1),
-  ('frutos-rojos-con-todo-cargada', 'micheladas', 'Frutos Rojos con todo · Cargada', 'Mango, manzana roja, fresa, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 13000, null, 'assets/img/menu/michelada-rojos.webp', true, 2),
-  ('frutos-rojos-con-todo-super-cargada', 'micheladas', 'Frutos Rojos con todo · Súper cargada', 'Mango, manzana roja, fresa, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 15000, null, 'assets/img/menu/michelada-rojos.webp', true, 3),
-  ('frutos-rojos-sencilla-normal', 'micheladas', 'Frutos Rojos sencilla · Normal', 'Mango, manzana roja, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 10000, null, 'assets/img/menu/michelada-rojos.webp', true, 4),
-  ('frutos-rojos-sencilla-cargada', 'micheladas', 'Frutos Rojos sencilla · Cargada', 'Mango, manzana roja, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-rojos.webp', true, 5),
-  ('frutos-verdes-con-todo-normal', 'micheladas', 'Frutos Verdes con todo · Normal', 'Mango, manzana verde, kiwi, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-verdes.webp', true, 6),
-  ('frutos-verdes-con-todo-cargada', 'micheladas', 'Frutos Verdes con todo · Cargada', 'Mango, manzana verde, kiwi, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 13000, null, 'assets/img/menu/michelada-verdes.webp', true, 7),
-  ('frutos-verdes-con-todo-super-cargada', 'micheladas', 'Frutos Verdes con todo · Súper cargada', 'Mango, manzana verde, kiwi, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 15000, null, 'assets/img/menu/michelada-verdes.webp', true, 8),
-  ('frutos-verdes-sencilla-normal', 'micheladas', 'Frutos Verdes sencilla · Normal', 'Mango, manzana verde, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 10000, null, 'assets/img/menu/michelada-verdes.webp', true, 9),
-  ('frutos-verdes-sencilla-cargada', 'micheladas', 'Frutos Verdes sencilla · Cargada', 'Mango, manzana verde, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-verdes.webp', true, 10),
-  ('frutos-amarillos-con-todo-normal', 'micheladas', 'Frutos Amarillos con todo · Normal', 'Mango, piña, maracuyá, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-amarillos.webp', true, 11),
-  ('frutos-amarillos-con-todo-cargada', 'micheladas', 'Frutos Amarillos con todo · Cargada', 'Mango, piña, maracuyá, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 13000, null, 'assets/img/menu/michelada-amarillos.webp', true, 12),
-  ('frutos-amarillos-con-todo-super-cargada', 'micheladas', 'Frutos Amarillos con todo · Súper cargada', 'Mango, piña, maracuyá, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 15000, null, 'assets/img/menu/michelada-amarillos.webp', true, 13),
-  ('frutos-amarillos-sencilla-normal', 'micheladas', 'Frutos Amarillos sencilla · Normal', 'Mango, piña, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 10000, null, 'assets/img/menu/michelada-amarillos-sencilla.webp', true, 14),
-  ('frutos-amarillos-sencilla-cargada', 'micheladas', 'Frutos Amarillos sencilla · Cargada', 'Mango, piña, cerezas, limón, tajín, hielo y vaso escarchado. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 12000, null, 'assets/img/menu/michelada-amarillos-sencilla.webp', true, 15),
-  ('michelada-clasica-normal', 'micheladas', 'Michelada Clásica · Normal', 'Vaso escarchado, limón, tajín, hielo y rodaja de limón. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 6000, null, 'assets/img/menu/michelada-clasica.webp', true, 16),
-  ('michelada-clasica-cargada', 'micheladas', 'Michelada Clásica · Cargada', 'Vaso escarchado, limón, tajín, hielo y rodaja de limón. Bebida de tu elección (cerveza, soda o gaseosa: dinos cuál en las notas del pedido).', 7000, null, 'assets/img/menu/michelada-clasica.webp', true, 17),
-  ('jugo-lulo', 'jugos', 'Jugo de Lulo', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-lulo.webp', false, 1),
-  ('jugo-guayaba', 'jugos', 'Jugo de Guayaba', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-guayaba.webp', false, 2),
-  ('jugo-tomate-de-arbol', 'jugos', 'Jugo de Tomate de árbol', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-tomate-de-arbol.webp', false, 3),
-  ('jugo-borojo', 'jugos', 'Jugo de Borojó', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-borojo.webp', false, 4),
-  ('jugo-guanabana', 'jugos', 'Jugo de Guanábana', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-guanabana.webp', false, 5),
-  ('jugo-fresa', 'jugos', 'Jugo de Fresa', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-fresa.webp', false, 6),
-  ('jugo-mora', 'jugos', 'Jugo de Mora', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-mora.webp', false, 7),
-  ('jugo-melon', 'jugos', 'Jugo de Melón', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-melon.webp', false, 8),
-  ('jugo-pina', 'jugos', 'Jugo de Piña', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-pina.webp', false, 9),
-  ('jugo-limonada-cerezada', 'jugos', 'Limonada Cerezada', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-limonada-cerezada.webp', false, 10),
-  ('jugo-limonada-natural', 'jugos', 'Limonada Natural', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-limonada-natural.webp', false, 11),
-  ('jugo-maracuya', 'jugos', 'Jugo de Maracuyá', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-maracuya.webp', false, 12),
-  ('jugo-banano', 'jugos', 'Jugo de Banano', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-banano.webp', false, 13),
-  ('jugo-zapote', 'jugos', 'Jugo de Zapote', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-zapote.webp', false, 14),
-  ('jugo-nispero', 'jugos', 'Jugo de Níspero', 'Fruta fresca, 100 % natural.', 0, null, 'assets/img/menu/jugo-nispero.webp', false, 15),
-  ('mini-pet-postobon', 'bebidas', 'Mini Pet Postobón 250 ml', '', 2000, null, null, true, 1),
-  ('mini-pet-coca-cola', 'bebidas', 'Mini Pet Coca-Cola 250 ml', '', 2500, null, null, true, 2),
-  ('jugo-hit-litro', 'bebidas', 'Jugo Hit litro (caja)', '', 6000, null, null, true, 3),
-  ('litro-coca-cola', 'bebidas', 'Litro Coca-Cola', '', 6000, null, null, true, 4),
-  ('litro-postobon', 'bebidas', 'Litro Postobón', '', 5000, null, null, true, 5),
-  ('coca-cola-1-65', 'bebidas', 'Coca-Cola 1,65 L', '', 8000, null, null, true, 6),
-  ('agua-250', 'bebidas', 'Agua 250 ml', '', 1000, null, null, true, 7)
-) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
+  ('mini-burger', 'hamburguesas', 'Mini Burger', '60 g de carne.', 6000, null, 'assets/img/menu/mini-burgers.webp', true, 1, '[]'::jsonb),
+  ('chimbita-burger', 'hamburguesas', 'Chimbita Burger', '150 g de carne, queso mozzarella, doble tocineta, jamón, pepinillo, cebolla y tocineta caramelizada, pan ajonjolí o artesanal, papas y gaseosa.', 23000, null, 'assets/img/menu/chimbita.webp', true, 2, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('doble-chimba', 'hamburguesas', 'Doble Chimba', '230 g de carne, doble tocineta, doble mozzarella, pepinillo, cebolla caramelizada, pan artesanal, papas y gaseosa.', 30000, null, 'assets/img/menu/doble-chimba.webp', true, 3, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('classic-burger', 'hamburguesas', 'Classic Burger', '130 g de carne, tocineta, cebolla caramelizada, mozzarella, lechuga y papas.', 17000, null, 'assets/img/menu/classic.webp', true, 4, '[]'::jsonb),
+  ('burger-chori', 'hamburguesas', 'Burger Chori', '130 g de carne y chorizo, doble tocineta, doble queso mozzarella, cebolla caramelizada, salsas de la casa, papas y gaseosa.', 25000, null, 'assets/img/menu/burger-chori.webp', true, 5, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('la-grilla', 'hamburguesas', 'La Grilla', '150 g de carne, queso costeño asado, chorizo asado, tocineta y cebolla caramelizada, pepinillo, papas y gaseosa.', 25000, null, 'assets/img/menu/la-grilla.webp', true, 6, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('la-de-pollo', 'hamburguesas', 'La de Pollo', '130 g de carne de pollo y papas.', 17000, null, 'assets/img/menu/la-de-pollo.webp', true, 7, '[]'::jsonb),
+  ('la-mixta', 'hamburguesas', 'La Mixta', 'Carne de res, carne de pollo apanado crocante, 3 tocinetas, 2 jamones, 2 mozzarellas, papas y gaseosa.', 30000, null, 'assets/img/menu/la-mixta.webp', true, 8, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('smash-burger', 'hamburguesas', 'Smash Burger', 'Doble carne smash, cebolla asada, mozzarella y tocineta. ¡Que no falte! Porción de papas y Coca-Cola.', 30000, 'La más chimba', 'assets/img/menu/smash.webp', true, 9, '[]'::jsonb),
+  ('dorichimba', 'hamburguesas', 'Dorichimba', '200 g de carne artesanal ¡una chimba!, mozzarella, cebolla asada, un paquete de Doritos, papas y Coca-Cola.', 30000, '¡De locos!', 'assets/img/menu/dorichimba.webp', true, 10, '[]'::jsonb),
+  ('montanera', 'hamburguesas', 'Montañera', 'Carne Angus, mozzarella, queso asado y bañado en miel, piña asada, tajadas de maduro, salsa súper de la casa, papas y Coca-Cola.', 30000, null, 'assets/img/menu/montanera.webp', true, 11, '[]'::jsonb),
+  ('triple-chimba-burger', 'hamburguesas', 'Triple Chimba Burger', '3 carnes Angus, 5 tocinetas, 4 jamones, 4 mozzarellas, pepinillo, papa y Coca-Cola PET 400.', 35000, null, 'assets/img/menu/triple-chimba.webp', true, 12, '[]'::jsonb),
+  ('combo-x4', 'combitos', 'Combo x4', '4 mini burger y 1 porción de papas.', 24000, null, 'assets/img/menu/combo-x4.webp', true, 1, '[]'::jsonb),
+  ('combo-melo', 'combitos', 'Combo Melo', '1 Chimbita Burger, 1 Classic Burger, 2 porciones de papas y 2 gaseosas.', 45000, null, 'assets/img/menu/combo-melo.webp', true, 2, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('chimba-de-combo', 'combitos', 'Chimba de Combo', '1 Classic Burger, 1 hamburguesa mixta, 2 porciones de papas y 2 gaseosas.', 45000, null, 'assets/img/menu/combo-plato.webp', true, 3, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('combo-chimbita', 'combitos', 'Combo Chimbita', '1 Chimbita Burger, 1 Dorichimba, 1 Classic Burger, 3 porciones de papas y 3 gaseosas.', 60000, null, 'assets/img/menu/chimbita.webp', true, 4, '[{"titulo":"Gaseosas","elige":3,"lista":"gaseosas"}]'::jsonb),
+  ('combo-gorditas', 'combitos', 'Combo Gorditas', '2 mini burger especiales, 1 porción de papas y 1 gaseosa.', 25000, null, 'assets/img/menu/combo-minis.webp', true, 5, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-chuzito', 'combitos', 'Combo Chuzito', '1 chuzo mixto, 1 mini burger, 1 porción de papa, 1 arepa y 1 gaseosa.', 22000, null, 'assets/img/menu/combo-chuzito.webp', true, 6, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-remelo', 'combitos', 'Combo Remelo', '1 salchi de 30K, 1 Classic Burger, 1 porción de papas y 1 gaseosa.', 50000, null, 'assets/img/menu/salchi-30k.webp', true, 7, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-1', 'combos', 'Combo 1', '1 hamburguesa mixta (120 g de carne y 120 g de pollo), 1 perro americano, 2 porciones de papas y 1 gaseosa.', 45000, null, 'assets/img/menu/perro-americano.webp', true, 1, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-2', 'combos', 'Combo 2', '1 perro de $15.000 (a elección), 1 Chimba Burger, 2 porciones de papas y 2 gaseosas.', 40000, null, 'assets/img/menu/perro-ranchero.webp', true, 2, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('combo-3', 'combos', 'Combo 3', '3 mini burger, 1 porción de papas grandes y 1 gaseosa.', 20000, null, 'assets/img/menu/combo-3.webp', true, 3, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-4', 'combos', 'Combo 4', '2 Classic Burger, 2 papas, 2 gaseosas y 1 mini perro.', 40000, null, 'assets/img/menu/combo-miniperros.webp', true, 4, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('combo-5', 'combos', 'Combo 5', '1 cajita de pollo, 1 perro sencillo, 1 porción de papas y 1 gaseosa.', 30000, null, 'assets/img/menu/cajita-feliz.webp', true, 5, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-6', 'combos', 'Combo 6', '1 salchi sencilla, 1 perro sencillo y 1 gaseosa.', 25000, null, 'assets/img/menu/salchi-sencilla.webp', true, 6, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-7', 'combos', 'Combo 7', '1 hamburguesa mixta, 1 salchi sencilla, 1 perro sencillo, 1 porción de papas y 2 gaseosas.', 50000, null, 'assets/img/menu/combo-plato.webp', true, 7, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('combo-8', 'combos', 'Combo 8', '1 salchi de 30, 1 Chimbita Burger, 1 porción de papas y 2 gaseosas.', 50000, null, 'assets/img/menu/salchichimba.webp', true, 8, '[{"titulo":"Gaseosas","elige":2,"lista":"gaseosas"}]'::jsonb),
+  ('combo-9', 'combos', 'Combo 9', '1 salchi de 50, 1 Chimbita Burger, 1 perro americano, 2 porciones de papas y 1 gaseosa.', 85000, null, 'assets/img/menu/salchi-50k.webp', true, 9, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('combo-10', 'combos', 'Combo 10', '1 Salchichimba, 1 Chimbita Burger, 1 perro de $15.000 (a elección), 2 porciones de papas y 1 litro de Postobón.', 60000, null, 'assets/img/menu/desgaranado.webp', true, 10, '[]'::jsonb),
+  ('rompedieta', 'combos', 'Rompedieta', '2 smash burger, tocineta con papas, aros de cebolla y Doritos. ¡La caja más chimba!', 50000, 'La caja más chimba', 'assets/img/menu/rompedieta.webp', true, 11, '[]'::jsonb),
+  ('combo-aletoso', 'combos', 'Combo Aletoso', '6 alitas bañadas en salsa de la casa (opcional) con papas.', 20000, null, null, true, 12, '[]'::jsonb),
+  ('salchi-sencilla', 'salchipapas', 'Salchi Sencilla', 'Papas, chorizo, salchicha, butifarra, lechuga, queso rallado y salsas de la casa.', 15000, null, 'assets/img/menu/salchi-sencilla.webp', true, 1, '[]'::jsonb),
+  ('salchichimba', 'salchipapas', 'Salchichimba', 'Papas, chorizo, salchicha ranchera, butifarra, carne, pollo, maíz tierno, queso mozzarella, ripio de papa, lechuga, queso rallado y salsas de la casa.', 23000, null, 'assets/img/menu/salchichimba.webp', true, 2, '[]'::jsonb),
+  ('la-de-30k', 'salchipapas', 'La de 30K', 'Lo mismo de la Salchichimba pero en más cantidad, con salchicha súper ranchera y huevo de codorniz.', 30000, null, 'assets/img/menu/salchi-30k.webp', true, 3, '[]'::jsonb),
+  ('la-de-50k', 'salchipapas', 'La de 50K', 'Más cantidad que «La de 30K», con 2 súper rancheras, tocineta y huevo de codorniz.', 50000, 'Para 5 personas', 'assets/img/menu/salchi-50k.webp', true, 4, '[]'::jsonb),
+  ('la-de-80k', 'salchipapas', 'La de 80K', 'Salchicha suiza, ranchera, de pollo y americana, chorizo santandereano, butifarra, carne de res, pollo en trozos, carne y pollo desmechado ¡y todo lo demás! Que chimba.', 80000, null, 'assets/img/menu/desgaranado.webp', true, 5, '[]'::jsonb),
+  ('ranchera-personal', 'salchipapas', 'La Ranchera Personal', 'Salchicha ranchera, papas, lechuga, queso rallado, papa ripio, salsas de la casa, piña rosada y tártara.', 18000, null, 'assets/img/menu/salchi-30k.webp', true, 6, '[]'::jsonb),
+  ('ranchera-para-2', 'salchipapas', 'La Ranchera para 2', 'Salchicha ranchera, súper ranchera, carne y pollo asado.', 30000, 'Para 2', 'assets/img/menu/salchi-50k.webp', true, 7, '[]'::jsonb),
+  ('mini-perro', 'perros', 'Mini Perro', 'Pan mini, salchicha mini, tocineta caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 6000, null, 'assets/img/menu/combo-miniperros.webp', true, 1, '[{"titulo":"Papas","elige":1,"opciones":[{"nombre":"Sin papas","extra":0},{"nombre":"Con papas","extra":2000}]}]'::jsonb),
+  ('mini-perro-ranchero', 'perros', 'Mini Perro Ranchero', 'Pan mini, salchicha mini ranchera, tocineta caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 7000, null, 'assets/img/menu/perro-gratinado.webp', true, 2, '[{"titulo":"Papas","elige":1,"opciones":[{"nombre":"Sin papas","extra":0},{"nombre":"Con papas","extra":2000}]}]'::jsonb),
+  ('el-sencillo', 'perros', 'El Sencillo', 'Salchicha long, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa y salsas de la casa.', 10000, null, 'assets/img/menu/perro-ranchero.webp', true, 3, '[{"titulo":"Papas","elige":1,"opciones":[{"nombre":"Sin papas","extra":0},{"nombre":"Con papas","extra":2000}]}]'::jsonb),
+  ('ranchero-con-papas', 'perros', 'Ranchero con papas', 'Salchicha súper ranchera, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsa de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-ranchero.webp', true, 4, '[]'::jsonb),
+  ('americano-con-papas', 'perros', 'Americano con papas', 'Salchicha americana, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsa de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-americano.webp', true, 5, '[]'::jsonb),
+  ('chori-perro-con-papas', 'perros', 'Chori Perro con papas', 'Chorizo Zenú, jamón, tocineta y cebolla caramelizada, queso mozzarella, ripio de papa, salsas de la casa y huevo de codorniz.', 15000, null, 'assets/img/menu/perro-americano.webp', true, 6, '[]'::jsonb),
+  ('perro-suizo', 'perros', 'Perro Suizo', 'Salchicha suiza, tocineta x3, mozzarella x3, queso rallado asado y piña. ¡La salchicha se sale del pan!', 25000, null, 'assets/img/menu/perro-gratinado.webp', true, 7, '[]'::jsonb),
+  ('perro-triple-chiba', 'perros', 'Perro Triple Chiba', '3 salchichas de pollo asadas, 3 tocinetas, 3 mozzarellas, maíz, piña y queso rallado. Papas y Coca-Cola.', 25000, null, 'assets/img/menu/perro-triple-chiba.webp', true, 8, '[]'::jsonb),
+  ('peperroni', 'perros', 'Peperroni', 'Salchicha americana, cebolla asada, mozzarella, tocineta, salsa americana, mostaza y papas.', 16000, 'Picantico', 'assets/img/menu/peperroni.webp', true, 9, '[]'::jsonb),
+  ('cajita-de-pollo', 'otras-cositas', 'Cajita de Pollo', 'Pollo en nuggets x12, papas, salsita de maíz, salsita leña y mozzarella.', 16000, null, 'assets/img/menu/cajita-feliz.webp', true, 1, '[]'::jsonb),
+  ('cajita-de-pollo-feliz', 'otras-cositas', 'Cajita de Pollo Feliz', '12 nuggets, papas, juguito de caja, chocolatina y ¡regalo sorpresa!', 20000, null, 'assets/img/menu/cajita-feliz.webp', true, 2, '[]'::jsonb),
+  ('papa-tornado', 'otras-cositas', 'Papa Tornado', 'Papa frita apanada en espiral con salsa cheddar, salsa de maíz, salsa rosada, piña y queso rallado.', 5000, null, 'assets/img/menu/papa-tornado.webp', true, 3, '[]'::jsonb),
+  ('patacon-con-todo', 'otras-cositas', 'Patacón con todo', 'Plátano, hogao, carne y pollo desmechado, queso rallado, salsas y huevo de codorniz.', 15000, null, 'assets/img/menu/picada.webp', true, 4, '[]'::jsonb),
+  ('chuzo-mixto', 'otras-cositas', 'Chuzo Mixto', 'Con papas, arepa y queso rallado.', 15000, null, 'assets/img/menu/chuzo-mixto.webp', true, 5, '[]'::jsonb),
+  ('desgaranado', 'otras-cositas', 'Desgaranado', 'Pollo, carne, maíz, chorizo, bollo limpio, ripio, salsas de la casa y gaseosa.', 22000, null, 'assets/img/menu/desgaranado.webp', true, 6, '[{"titulo":"Gaseosa","elige":1,"lista":"gaseosas"}]'::jsonb),
+  ('carne-asada', 'asados', 'Carne asada', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 1, '[]'::jsonb),
+  ('pechuga-asada', 'asados', 'Pechuga asada', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 2, '[]'::jsonb),
+  ('chuleta-de-cerdo', 'asados', 'Chuleta de cerdo', 'Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/asados.webp', true, 3, '[]'::jsonb),
+  ('punta-gorda', 'asados', 'Punta gorda', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 4, '[]'::jsonb),
+  ('lomo-fino', 'asados', 'Lomo fino', 'Acompañado con papa frita, yuca o patacón.', 30000, null, 'assets/img/menu/asados.webp', true, 5, '[]'::jsonb),
+  ('lomo-de-cerdo', 'asados', 'Lomo de cerdo', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 6, '[]'::jsonb),
+  ('costilla-de-cerdo-bbq', 'asados', 'Costilla de cerdo BBQ', 'Acompañado con papa frita, yuca o patacón.', 30000, null, 'assets/img/menu/asados.webp', true, 7, '[]'::jsonb),
+  ('churrasco', 'asados', 'Churrasco', 'Acompañado con papa frita, yuca o patacón.', 32000, null, 'assets/img/menu/asados.webp', true, 8, '[]'::jsonb),
+  ('picada', 'asados', 'Picada', 'Carnes asadas para picar, del tamaño que quieras. Acompañado con papa frita, yuca o patacón.', 20000, null, 'assets/img/menu/picada.webp', true, 9, '[{"titulo":"Tamaño","elige":1,"opciones":[{"nombre":"De 20K","extra":0},{"nombre":"De 30K","extra":10000},{"nombre":"De 50K","extra":30000},{"nombre":"De 80K","extra":60000}]}]'::jsonb),
+  ('ceviche-de-chicharron', 'asados', 'Ceviche de chicharrón', 'Acompañado con papa frita, yuca o patacón.', 25000, null, 'assets/img/menu/asados.webp', true, 10, '[]'::jsonb),
+  ('chorizo-con-arepa', 'antojitos', 'Chorizo con arepa', '', 9000, null, 'assets/img/menu/picada.webp', true, 1, '[]'::jsonb),
+  ('mazorquita', 'antojitos', 'Mazorquita', '', 8000, null, 'assets/img/menu/asados.webp', true, 2, '[]'::jsonb),
+  ('patacon-con-hogao', 'antojitos', 'Patacón con hogao', '', 9000, null, 'assets/img/menu/picada.webp', true, 3, '[]'::jsonb),
+  ('platano-aborrajado', 'antojitos', 'Plátano aborrajado', '', 8000, null, null, true, 4, '[]'::jsonb),
+  ('frutos-rojos-con-todo', 'micheladas', 'Frutos Rojos con todo', 'Mango, manzana roja, fresa, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 12000, null, 'assets/img/menu/michelada-rojos.webp', true, 1, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":1000},{"nombre":"Súper cargada","extra":3000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('frutos-rojos-sencilla', 'micheladas', 'Frutos Rojos sencilla', 'Mango, manzana roja, cerezas, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 10000, null, 'assets/img/menu/michelada-rojos.webp', true, 2, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":2000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('frutos-verdes-con-todo', 'micheladas', 'Frutos Verdes con todo', 'Mango, manzana verde, kiwi, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 12000, null, 'assets/img/menu/michelada-verdes.webp', true, 3, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":1000},{"nombre":"Súper cargada","extra":3000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('frutos-verdes-sencilla', 'micheladas', 'Frutos Verdes sencilla', 'Mango, manzana verde, cerezas, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 10000, null, 'assets/img/menu/michelada-verdes.webp', true, 4, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":2000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('frutos-amarillos-con-todo', 'micheladas', 'Frutos Amarillos con todo', 'Mango, piña, maracuyá, cerezas, bombombún, masmelo, trululú, tira de caramelo, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 12000, null, 'assets/img/menu/michelada-amarillos.webp', true, 5, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":1000},{"nombre":"Súper cargada","extra":3000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('frutos-amarillos-sencilla', 'micheladas', 'Frutos Amarillos sencilla', 'Mango, piña, cerezas, limón, tajín, hielo y vaso escarchado. Elige el nivel (la normal lleva menos fruta) y tu bebida.', 10000, null, 'assets/img/menu/michelada-amarillos-sencilla.webp', true, 6, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":2000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('michelada-clasica', 'micheladas', 'Michelada Clásica', 'Vaso escarchado, limón, tajín, hielo y rodaja de limón. Elige el nivel y tu bebida.', 6000, null, 'assets/img/menu/michelada-clasica.webp', true, 7, '[{"titulo":"Nivel","elige":1,"opciones":[{"nombre":"Normal","extra":0},{"nombre":"Cargada","extra":1000}]},{"titulo":"Bebida","elige":1,"lista":"bebidas_michelada"}]'::jsonb),
+  ('jugo-lulo', 'jugos', 'Jugo de Lulo', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-lulo.webp', true, 1, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-guayaba', 'jugos', 'Jugo de Guayaba', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-guayaba.webp', true, 2, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-tomate-de-arbol', 'jugos', 'Jugo de Tomate de árbol', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-tomate-de-arbol.webp', true, 3, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-borojo', 'jugos', 'Jugo de Borojó', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-borojo.webp', true, 4, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-guanabana', 'jugos', 'Jugo de Guanábana', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-guanabana.webp', true, 5, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-fresa', 'jugos', 'Jugo de Fresa', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-fresa.webp', true, 6, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-mora', 'jugos', 'Jugo de Mora', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-mora.webp', true, 7, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-melon', 'jugos', 'Jugo de Melón', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-melon.webp', true, 8, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-pina', 'jugos', 'Jugo de Piña', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-pina.webp', true, 9, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-limonada-cerezada', 'jugos', 'Limonada Cerezada', 'Natural y bien fría.', 8000, null, 'assets/img/menu/jugo-limonada-cerezada.webp', true, 10, '[]'::jsonb),
+  ('jugo-limonada-natural', 'jugos', 'Limonada Natural', 'Natural y bien fría.', 8000, null, 'assets/img/menu/jugo-limonada-natural.webp', true, 11, '[]'::jsonb),
+  ('jugo-maracuya', 'jugos', 'Jugo de Maracuyá', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-maracuya.webp', true, 12, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-banano', 'jugos', 'Jugo de Banano', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-banano.webp', true, 13, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-zapote', 'jugos', 'Jugo de Zapote', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-zapote.webp', true, 14, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('jugo-nispero', 'jugos', 'Jugo de Níspero', 'Fruta fresca, 100 % natural. En agua o en leche.', 8000, null, 'assets/img/menu/jugo-nispero.webp', true, 15, '[{"titulo":"Preparación","elige":1,"opciones":[{"nombre":"En agua","extra":0},{"nombre":"En leche","extra":2000}]}]'::jsonb),
+  ('mini-pet-postobon', 'bebidas', 'Mini Pet Postobón 250 ml', '', 2000, null, null, true, 1, '[]'::jsonb),
+  ('mini-pet-coca-cola', 'bebidas', 'Mini Pet Coca-Cola 250 ml', '', 2500, null, null, true, 2, '[]'::jsonb),
+  ('jugo-hit-litro', 'bebidas', 'Jugo Hit litro (caja)', '', 6000, null, null, true, 3, '[]'::jsonb),
+  ('litro-coca-cola', 'bebidas', 'Litro Coca-Cola', '', 6000, null, null, true, 4, '[]'::jsonb),
+  ('litro-postobon', 'bebidas', 'Litro Postobón', '', 5000, null, null, true, 5, '[]'::jsonb),
+  ('coca-cola-1-65', 'bebidas', 'Coca-Cola 1,65 L', '', 8000, null, null, true, 6, '[]'::jsonb),
+  ('agua-250', 'bebidas', 'Agua 250 ml', '', 1000, null, null, true, 7, '[]'::jsonb)
+) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
 join public.categorias c on c.slug = v.cat;
 
 -- Producto destacado de la web y dirección del sitio (para ver las fotos desde la app)
 update public.ajustes set
-  producto_destacado_id = (select id from public.productos where slug = 'salchichimba'),
-  titulo_destacado      = 'La estrella de la casa',
-  foto_destacado_url    = 'assets/img/promo-salchipapa.webp',
+  producto_destacado_id = (select id from public.productos where slug = 'smash-burger'),
+  titulo_destacado      = 'La más chimba',
+  foto_destacado_url    = null,
+  bebidas_gaseosa       = array['Coca-Cola', 'Coca-Cola Zero', 'Postobón Manzana', 'Postobón Colombiana', 'Pepsi', 'Ginger'],
+  bebidas_michelada     = array['Ginger', 'Bretaña', 'Soda Hatsu', 'Bretaña Hard Seltzer', 'Like', 'Cuates', 'Smirnoff', 'Club Colombia', 'Coronita', 'Miller Lite', 'Águila', 'Budweiser', 'Heineken', 'Cola y Pola', 'Póker'],
   url_sitio             = 'https://raw.githubusercontent.com/danteruedas123-glitch/QueChimbaBurguer/web/'
 where id = 1;
 

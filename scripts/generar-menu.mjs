@@ -8,22 +8,28 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CATEGORIAS, DESTACADO, productosPlanos } from '../supabase/menu.mjs';
+import { BEBIDAS, CATEGORIAS, DESTACADO, productosPlanos } from '../supabase/menu.mjs';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WEB = process.env.QB_WEB_DIR ?? path.resolve(RAIZ, '..', 'WebQuechimbaburger');
 const PRODUCTOS = productosPlanos();
 
-const sql = (v) => (v === null || v === undefined ? 'null' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : `'${String(v).replaceAll("'", "''")}'`);
+const sql = (v) => (v === null || v === undefined ? 'null'
+  : typeof v === 'number' || typeof v === 'boolean' ? String(v)
+  : typeof v === 'object' ? `'${JSON.stringify(v).replaceAll("'", "''")}'::jsonb`
+  : `'${String(v).replaceAll("'", "''")}'`);
+const arreglo = (xs) => `array[${xs.map(sql).join(', ')}]`;
 const js = (v) => `'${String(v).replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 
 const valoresCategorias = CATEGORIAS.map((c, i) => `  (${sql(c.slug)}, ${sql(c.nombre)}, ${i + 1})`).join(',\n');
-const valoresProductos = PRODUCTOS.map((p) => `  (${[p.slug, p.categoria, p.nombre, p.descripcion, p.precio, p.etiqueta, p.foto_url, p.activo, p.orden].map(sql).join(', ')})`).join(',\n');
+const valoresProductos = PRODUCTOS.map((p) => `  (${[p.slug, p.categoria, p.nombre, p.descripcion, p.precio, p.etiqueta, p.foto_url, p.activo, p.orden, p.opciones].map(sql).join(', ')})`).join(',\n');
 const listaSlugs = (xs) => xs.map((x) => sql(x.slug)).join(', ');
 const destacado = `update public.ajustes set
   producto_destacado_id = (select id from public.productos where slug = ${sql(DESTACADO.producto)}),
   titulo_destacado      = ${sql(DESTACADO.titulo)},
-  foto_destacado_url    = ${sql(DESTACADO.foto)}`;
+  foto_destacado_url    = ${sql(DESTACADO.foto)},
+  bebidas_gaseosa       = ${arreglo(BEBIDAS.gaseosas)},
+  bebidas_michelada     = ${arreglo(BEBIDAS.bebidas_michelada)}`;
 
 // ---------- seed.sql ----------
 const seed = `-- =====================================================================
@@ -35,11 +41,11 @@ const seed = `-- ===============================================================
 insert into public.categorias (slug, nombre, orden) values
 ${valoresCategorias};
 
-insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
-select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden
+insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
+select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden, v.opciones
 from (values
 ${valoresProductos}
-) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
+) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
 join public.categorias c on c.slug = v.cat;
 
 -- Producto destacado de la web y dirección del sitio (para ver las fotos desde la app)
@@ -52,11 +58,11 @@ where id = 1;
 const actualizar = `-- =====================================================================
 -- Quechimba Burger · REEMPLAZAR EL MENÚ POR EL MENÚ REAL
 -- GENERADO desde supabase/menu.mjs con "npm run menu:generar". No editar aquí.
--- Pegar TODO en Supabase → SQL Editor → Run (una vez).
+-- Pegar TODO en Supabase → SQL Editor → Run (una vez), DESPUÉS de las
+-- migraciones 08, 09 y 10.
 -- • Crea o actualiza las ${CATEGORIAS.length} categorías y los ${PRODUCTOS.length} productos del menú real.
 -- • Los productos viejos que NUNCA se vendieron se borran; los que ya tienen
 --   ventas se ocultan (la contabilidad histórica no cambia).
--- • Los jugos quedan ocultos y en $0: ponles precio y actívalos en la app (Menú).
 -- • La web se actualiza sola en segundos (aviso en vivo de la migración 07).
 -- =====================================================================
 begin;
@@ -65,16 +71,16 @@ insert into public.categorias (slug, nombre, orden) values
 ${valoresCategorias}
 on conflict (slug) do update set nombre = excluded.nombre, orden = excluded.orden, activa = true;
 
-insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
-select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden
+insert into public.productos (slug, categoria_id, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
+select v.slug, c.id, v.nombre, v.descripcion, v.precio, v.etiqueta, v.foto_url, v.activo, v.orden, v.opciones
 from (values
 ${valoresProductos}
-) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden)
+) as v (slug, cat, nombre, descripcion, precio, etiqueta, foto_url, activo, orden, opciones)
 join public.categorias c on c.slug = v.cat
 on conflict (slug) do update set
   categoria_id = excluded.categoria_id, nombre = excluded.nombre, descripcion = excluded.descripcion,
   precio = excluded.precio, etiqueta = excluded.etiqueta, foto_url = excluded.foto_url,
-  activo = excluded.activo, agotado = false, orden = excluded.orden;
+  activo = excluded.activo, agotado = false, orden = excluded.orden, opciones = excluded.opciones;
 
 -- Menú viejo: se borra lo que nunca se vendió y se oculta lo que sí
 delete from public.productos p
@@ -97,7 +103,7 @@ commit;
 // ---------- web: bloque MENÚ de config.js ----------
 const sangria = '    ';
 const productoWeb = (p) => `${sangria}{ id: ${js(p.slug)}, categoria: ${js(p.categoria)}, nombre: ${js(p.nombre)}, precio: ${p.precio},${p.etiqueta ? ` etiqueta: ${js(p.etiqueta)},` : ''}
-${sangria}  descripcion: ${js(p.descripcion)},
+${sangria}  descripcion: ${js(p.descripcion)},${p.opciones.length ? `\n${sangria}  opciones: ${JSON.stringify(p.opciones)},` : ''}
 ${sangria}  foto: ${js(p.foto_url ?? 'assets/img/logo.webp')} }`;
 const bloqueWeb = `  /* >>> MENÚ · GENERADO desde QuechimbaPedidos/supabase/menu.mjs ("npm run menu:generar").
      No editar aquí: es solo el respaldo para cuando no hay conexión; el menú
@@ -110,10 +116,13 @@ ${CATEGORIAS.filter((c) => PRODUCTOS.some((p) => p.categoria === c.slug && p.act
 ${PRODUCTOS.filter((p) => p.activo).map(productoWeb).join(',\n')}
   ],
 
-  /* Franja promocional: producto destacado, su foto grande y el título pequeño */
+  /* Bebidas para elegir en combos y micheladas (en vivo: Ajustes de la app) */
+  bebidas: ${JSON.stringify(BEBIDAS)},
+
+  /* Portada: producto destacado (en vivo: Ajustes de la app) */
   promo: {
     producto: ${js(DESTACADO.producto)},
-    foto: ${js(DESTACADO.foto)},
+    foto: ${DESTACADO.foto ? js(DESTACADO.foto) : 'null'},
     titulo: ${js(DESTACADO.titulo)}
   }
   /* <<< MENÚ */`;

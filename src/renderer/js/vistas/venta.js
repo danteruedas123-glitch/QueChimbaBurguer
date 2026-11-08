@@ -2,12 +2,13 @@
  * Caja: registrar ventas del local o de WhatsApp (que no pasan por la web),
  * para que la contabilidad quede completa.
  */
-import { html, icono, pintar, avisar, $ } from '../ui.js';
+import { html, icono, pintar, avisar, modal, $, $$ } from '../ui.js';
 import { formatearCOP, parsearCOP } from '../../../shared/dinero.js';
 import { ETIQUETA_PAGO, PAGOS_ACTIVOS } from '../../../shared/estados.js';
 import { calcularTicket, mensajeError } from '../../../shared/utilidades.js';
 import { urlFoto } from '../datos.js';
 import { numeroPedido } from './pedidos.js';
+import { opcionesDe, tieneOpciones, eleccionValida, extraDe, detalleDe, claveLinea, leerLinea } from '../../../shared/opciones.js';
 
 const normalizar = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -18,11 +19,13 @@ export async function montar(contenedor, ctx) {
   const productos = menu.productos.filter((p) => p.activo);
   const porId = new Map(productos.map((p) => [p.id, p]));
   const categorias = menu.categorias.filter((c) => productos.some((p) => p.categoria_id === c.id));
+  const bebidas = { gaseosas: menu.ajustes?.bebidas_gaseosa ?? [], bebidas_michelada: menu.ajustes?.bebidas_michelada ?? [] };
+  const unidadesDe = (id) => [...estado.lineas].reduce((s, [clave, n]) => s + (leerLinea(clave).id === id ? n : 0), 0);
 
   const estado = {
     filtro: 'todas',
     busqueda: '',
-    lineas: new Map(), // id → cantidad
+    lineas: new Map(), // clave (producto + lo elegido) → cantidad
     canal: 'local',
     entrega: 'en_local',
     pago: 'efectivo',
@@ -94,7 +97,8 @@ export async function montar(contenedor, ctx) {
       <button type="button" class="producto-btn ${p.agotado ? 'agotado' : ''}" data-producto="${p.id}" aria-label="Agregar ${p.nombre}, ${formatearCOP(p.precio)}">
         <img src="${urlFoto(p.foto_url, urlSitio)}" alt="" loading="lazy" data-foto>
         <div><b>${p.nombre}</b><span class="num">${formatearCOP(p.precio)}</span></div>
-        ${estado.lineas.get(p.id) ? html`<span class="cantidad">${estado.lineas.get(p.id)}</span>` : ''}
+        ${unidadesDe(p.id) ? html`<span class="cantidad">${unidadesDe(p.id)}</span>` : ''}
+        ${tieneOpciones(p) ? html`<span class="con-opciones" title="Se eligen opciones">opciones</span>` : ''}
       </button>`)}` : html`<p class="vacio">No hay productos que coincidan.</p>`);
   }
 
@@ -105,16 +109,20 @@ export async function montar(contenedor, ctx) {
   }
 
   function pintarTicket() {
-    const lineas = [...estado.lineas].map(([id, cantidad]) => ({ p: porId.get(id), cantidad }));
-    pintar(el.lineas, lineas.length ? html`${lineas.map(({ p, cantidad }) => html`
+    const lineas = [...estado.lineas].map(([clave, cantidad]) => {
+      const { id, elegidas } = leerLinea(clave);
+      const p = porId.get(id);
+      return { clave, p, cantidad, precio: p.precio + extraDe(p, elegidas, bebidas), detalle: detalleDe(p, elegidas) };
+    });
+    pintar(el.lineas, lineas.length ? html`${lineas.map(({ clave, p, cantidad, precio, detalle }) => html`
       <div class="linea">
-        <div><b>${p.nombre}</b><small class="num">${formatearCOP(p.precio)} c/u</small></div>
+        <div><b>${p.nombre}</b>${detalle ? html`<small class="linea-detalle">${detalle}</small>` : ''}<small class="num">${formatearCOP(precio)} c/u</small></div>
         <div class="paso" role="group" aria-label="Cantidad de ${p.nombre}">
-          <button type="button" data-menos="${p.id}" aria-label="Quitar uno">${icono('menos')}</button>
+          <button type="button" data-menos="${clave}" aria-label="Quitar uno">${icono('menos')}</button>
           <output>${cantidad}</output>
-          <button type="button" data-mas="${p.id}" aria-label="Agregar uno">${icono('mas')}</button>
+          <button type="button" data-mas="${clave}" aria-label="Agregar uno">${icono('mas')}</button>
         </div>
-        <span class="linea-total num">${formatearCOP(p.precio * cantidad)}</span>
+        <span class="linea-total num">${formatearCOP(precio * cantidad)}</span>
       </div>`)}` : html`<p class="vacio">Toca un producto para agregarlo.</p>`);
 
     el.error.hidden = true;
@@ -122,7 +130,7 @@ export async function montar(contenedor, ctx) {
     let ok = lineas.length > 0;
     try {
       if (domicilio === null || descuento === null) throw new Error('Escribe valores en pesos, sin decimales (ej. 4.000)');
-      const t = calcularTicket(lineas.map(({ p, cantidad }) => ({ precio: p.precio, cantidad })), { domicilio, descuento });
+      const t = calcularTicket(lineas.map(({ precio, cantidad }) => ({ precio, cantidad })), { domicilio, descuento });
       el.subtotal.textContent = formatearCOP(t.subtotal);
       el.total.textContent = formatearCOP(t.total);
       el.registrar.textContent = lineas.length ? `Registrar venta · ${formatearCOP(t.total)}` : 'Registrar venta';
@@ -141,9 +149,47 @@ export async function montar(contenedor, ctx) {
     contenedor.querySelectorAll('[data-solo-domicilio]').forEach((x) => { x.hidden = estado.entrega !== 'domicilio'; });
   }
 
-  function cambiar(id, delta) {
-    const n = Math.max(0, Math.min(99, (estado.lineas.get(id) ?? 0) + delta));
-    if (n) estado.lineas.set(id, n); else estado.lineas.delete(id);
+  /** Ventanita para elegir lo que lleva (bebida del combo, en agua o en leche…). */
+  async function elegirOpciones(p) {
+    return modal({
+      titulo: p.nombre,
+      aceptar: 'Agregar',
+      contenido: html`<div class="opciones-venta">
+        ${p.opciones.map((g, i) => html`
+          <fieldset class="grupo-opciones"><legend>${g.titulo}${g.elige > 1 ? html` <small>(elige ${g.elige})</small>` : ''}</legend>
+            <div class="fila-campos">${Array.from({ length: g.elige }, (_, k) => html`
+              <label class="campo"><span class="visualmente-oculto">${g.titulo} ${k + 1}</span>
+                <select data-grupo-opc="${i}" required>
+                  ${g.lista ? html`<option value="">Elige…</option>` : ''}
+                  ${opcionesDe(g, bebidas).map((o) => html`<option value="${o.nombre}">${o.nombre}${o.extra ? ` (+${formatearCOP(o.extra)})` : ''}</option>`)}
+                </select></label>`)}</div>
+          </fieldset>`)}
+        <p class="precio-opciones">Precio: <b class="num" data-precio-opc>${formatearCOP(p.precio)}</b></p></div>`,
+      alAbrir: (d) => {
+        const leer = () => p.opciones.map((_, i) => $$(`[data-grupo-opc="${i}"]`, d).map((s) => s.value).filter(Boolean));
+        const actualizar = () => { $('[data-precio-opc]', d).textContent = formatearCOP(p.precio + extraDe(p, leer(), bebidas)); };
+        d.addEventListener('change', actualizar);
+        actualizar();
+        $('select', d)?.focus();
+      },
+      alAceptar: (f) => {
+        const elegidas = p.opciones.map((_, i) => $$(`[data-grupo-opc="${i}"]`, f).map((s) => s.value).filter(Boolean));
+        if (!eleccionValida(p, elegidas, bebidas)) throw new Error('Elige todas las opciones');
+        return elegidas;
+      },
+    });
+  }
+
+  async function agregarProducto(id) {
+    const p = porId.get(id);
+    if (!tieneOpciones(p)) { cambiar(id, 1); return; }
+    const elegidas = await elegirOpciones(p);
+    if (elegidas) cambiar(claveLinea(id, elegidas), 1);
+  }
+
+  function cambiar(clave, delta) {
+    const n = Math.max(0, Math.min(99, (estado.lineas.get(clave) ?? 0) + delta));
+    if (n) estado.lineas.set(clave, n); else estado.lineas.delete(clave);
     pintarTicket();
     pintarRejilla();
   }
@@ -158,7 +204,7 @@ export async function montar(contenedor, ctx) {
   contenedor.addEventListener('click', (e) => {
     const t = e.target.closest('[data-producto],[data-mas],[data-menos],[data-cat],[data-grupo] button,[data-limpiar]');
     if (!t) return;
-    if (t.dataset.producto) cambiar(t.dataset.producto, 1);
+    if (t.dataset.producto) agregarProducto(t.dataset.producto);
     else if (t.dataset.mas) cambiar(t.dataset.mas, 1);
     else if (t.dataset.menos) cambiar(t.dataset.menos, -1);
     else if (t.dataset.cat) { estado.filtro = t.dataset.cat; pintarPestanas(); pintarRejilla(); }
@@ -184,7 +230,10 @@ export async function montar(contenedor, ctx) {
     el.registrar.disabled = true;
     try {
       const v = await ctx.api.registrarVenta(
-        [...estado.lineas].map(([producto_id, cantidad]) => ({ producto_id, cantidad })),
+        [...estado.lineas].map(([clave, cantidad]) => {
+          const { id, elegidas } = leerLinea(clave);
+          return elegidas ? { producto_id: id, cantidad, opciones: elegidas } : { producto_id: id, cantidad };
+        }),
         {
           canal: estado.canal, tipo_entrega: estado.entrega, metodo_pago: estado.pago,
           cliente_nombre: $('[data-cliente]', contenedor).value, cliente_telefono: $('[data-telefono]', contenedor).value,

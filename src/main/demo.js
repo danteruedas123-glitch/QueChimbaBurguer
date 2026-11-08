@@ -112,10 +112,16 @@ export async function registrarDemo(ipcMain, ventana) {
   ipcMain.handle('demo:simular-pedido-web', () => responder(async () => {
     const menu = await base.rpc('menu_publico', {}, { rol: 'anon' });
     const disponibles = menu.productos.filter((p) => !p.agotado);
-    const elegir = () => disponibles[Math.floor(Math.random() * disponibles.length)].slug;
+    const azar = (xs) => xs[Math.floor(Math.random() * xs.length)];
+    // Un cliente también elige las opciones (bebida del combo, en agua o en leche…)
+    const linea = (cantidad) => {
+      const p = azar(disponibles);
+      const opciones = (p.opciones ?? []).map((g) => Array.from({ length: g.elige }, () => azar(g.lista ? menu.bebidas[g.lista] : g.opciones.map((o) => o.nombre))));
+      return opciones.length ? { slug: p.slug, cantidad, opciones } : { slug: p.slug, cantidad };
+    };
     const nombres = ['Laura Gómez', 'Andrés Ríos', 'Katherine Díaz', 'Felipe Mejía'];
     const r = await base.rpc('crear_pedido_web', {
-      p_items: [{ slug: elegir(), cantidad: 1 + Math.floor(Math.random() * 2) }, { slug: elegir(), cantidad: 1 }],
+      p_items: [linea(1 + Math.floor(Math.random() * 2)), linea(1)],
       p_cliente: {
         nombre: nombres[Math.floor(Math.random() * nombres.length)], telefono: '304 000 0000',
         tipo_entrega: 'domicilio', direccion: 'Barrio La Florencia, Calle 5 # 3-20', metodo_pago: 'nequi', notas: 'Sin cebolla',

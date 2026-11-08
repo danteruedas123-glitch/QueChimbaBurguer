@@ -171,11 +171,11 @@ describe('menú administrado desde la base de datos', () => {
     const [q] = await ctx.admin(`select id, categoria_id from public.productos where slug = 'quechimba'`);
     await ctx.staff('producto_guardar', { p: { id: q.id, categoria_id: q.categoria_id, nombre: 'La Quechimba', precio: 31500, etiqueta: 'Más pedida', foto_url: 'assets/img/quechimba.webp' } });
     await ctx.staff('producto_guardar', { p: { categoria_id: q.categoria_id, nombre: 'Hamburguesa de la Prueba', precio: 21000 } });
-    await ctx.staff('producto_guardar', { p: { categoria_id: q.categoria_id, nombre: 'Smash Burger', precio: 30500 } }); // la de la portada
     const { page, errores } = await abrir();
     await page.waitForFunction(() => document.querySelector('.dish[data-id="hamburguesa-de-la-prueba"]'), { timeout: 10000, polling: 100 });
     assert.equal(await page.$eval('.dish[data-id="quechimba"] .dish-price', (e) => e.textContent), '$31.500');
-    assert.equal(await page.$eval('[data-precio-de="smash-burger"]', (e) => e.textContent), '$30.500', 'el precio de la portada también se actualiza');
+    assert.deepEqual(await page.$eval('[data-hero-ticket]', (t) => [t.hidden, t.querySelector('[data-hero-nombre]').textContent, t.querySelector('[data-hero-precio]').textContent]),
+      [false, 'Salchipapa De Nivel', '$40.000'], 'la portada muestra el producto destacado con su precio de la base de datos');
     assert.deepEqual(errores, []);
     await page.close();
   });
@@ -335,16 +335,25 @@ describe('web en vivo (sin recargar la pestaña)', () => {
     await page.close();
   });
 
-  test('cambiar el producto destacado cambia también su foto y su nombre en la web', async () => {
+  test('cambiar el producto destacado en la app cambia la portada: foto, nombre y precio', async () => {
     const { page } = await abrir();
-    assert.match(await page.$eval('[data-promo-img]', (i) => i.getAttribute('src')), /promo-salchipapa/);
+    assert.match(await page.$eval('[data-hero-img]', (i) => i.getAttribute('src')), /promo-salchipapa/);
     const [combo] = await ctx.admin(`select id from public.productos where slug = 'combo-x4'`);
     const [original] = await ctx.admin(`select producto_destacado_id, foto_destacado_url from public.ajustes`);
     await ctx.staff('ajustes_guardar', { p: { producto_destacado_id: combo.id } });
     await page.evaluate(() => window.__avisarCambio('ajustes'));
-    await page.waitForFunction(() => document.querySelector('[data-promo-name]').textContent === 'Combo x4', { timeout: 5000, polling: 50 });
-    const src = await page.$eval('[data-promo-img]', (i) => i.getAttribute('src'));
+    await page.waitForFunction(() => document.querySelector('[data-hero-nombre]').textContent === 'Combo x4', { timeout: 5000, polling: 50 });
+    const src = await page.$eval('[data-hero-img]', (i) => i.getAttribute('src'));
     assert.match(src, /photo-1610614819513/, 'la foto es la del Combo x4');
+    assert.equal(await page.$eval('[data-hero-precio]', (e) => e.textContent), '$85.000');
+    // Tocar la portada agrega ese producto al pedido
+    await page.click('[data-hero-ticket]');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('qb_carrito_v1'))?.['combo-x4'] === 1, { timeout: 5000, polling: 50 });
+    // Sin destacado, vuelve la foto original y no hay ticket
+    await ctx.staff('ajustes_guardar', { p: { producto_destacado_id: null } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => document.querySelector('[data-hero-ticket]').hidden, { timeout: 5000, polling: 50 });
+    assert.match(await page.$eval('[data-hero-img]', (i) => i.getAttribute('src')), /hero-quechimba/);
     await ctx.admin(`update public.ajustes set producto_destacado_id = $1, foto_destacado_url = $2`, [original.producto_destacado_id, original.foto_destacado_url]);
     await page.close();
   });
@@ -556,6 +565,84 @@ describe('festividades', () => {
       };
     });
     assert.deepEqual(r, { botonAlcanzable: true, animados: 0, voladores: 0, elementos: true });
+    await page.close();
+  });
+});
+
+describe('opciones al pedir (bebida del combo, en agua o en leche…)', () => {
+  before(async () => {
+    const [{ id: cat }] = await ctx.admin(`select id from public.categorias where slug = 'combos'`);
+    await ctx.staff('producto_guardar', { p: {
+      categoria_id: cat, nombre: 'Combo Opciones', precio: 20000, descripcion: 'Para probar la ventanita',
+      opciones: [
+        { titulo: 'Preparación', elige: 1, opciones: [{ nombre: 'En agua', extra: 0 }, { nombre: 'En leche', extra: 2000 }] },
+        { titulo: 'Gaseosas', elige: 2, lista: 'gaseosas' },
+      ],
+    } });
+  });
+
+  test('se abre la ventanita, se elige, el precio se actualiza y el pedido llega con lo elegido', async () => {
+    const { page, errores } = await abrir();
+    await page.waitForSelector('[data-elegir="combo-opciones"]', { timeout: 10000 });
+    await abrirCategoria(page, 'combos');
+    assert.match(await page.$eval('.dish[data-id="combo-opciones"] .dish-price', (e) => e.textContent), /desde \$20\.000/);
+    await page.click('[data-elegir="combo-opciones"]');
+    await page.waitForSelector('[data-opciones][open]');
+    const inicio = await page.evaluate(() => ({
+      precio: document.querySelector('[data-opc-precio]').textContent,
+      bloqueado: document.querySelector('[data-opc-agregar]').disabled,
+      marcada: document.querySelector('input[name="g0"]:checked')?.value,
+    }));
+    assert.deepEqual(inicio, { precio: '$20.000', bloqueado: true, marcada: 'En agua' }, 'lo básico viene marcado; las gaseosas hay que elegirlas');
+    await page.click('input[name="g0"][value="En leche"] + span');
+    await page.select('select[name="g1-0"]', 'Coca-Cola');
+    await page.select('select[name="g1-1"]', 'Pepsi');
+    assert.deepEqual(await page.evaluate(() => [document.querySelector('[data-opc-precio]').textContent, document.querySelector('[data-opc-agregar]').disabled]), ['$22.000', false]);
+    await page.click('[data-opc-agregar]');
+    await page.waitForFunction(() => !document.querySelector('[data-opciones]').open, { timeout: 5000, polling: 50 });
+
+    // Otro igual pero con otras gaseosas → línea aparte
+    await page.click('[data-elegir="combo-opciones"]');
+    await page.waitForSelector('[data-opciones][open]');
+    await page.select('select[name="g1-0"]', 'Ginger');
+    await page.select('select[name="g1-1"]', 'Ginger');
+    await page.click('[data-opc-agregar]');
+    await page.waitForFunction(() => !document.querySelector('[data-opciones]').open, { timeout: 5000, polling: 50 });
+    assert.equal(await page.$eval('[data-elegir="combo-opciones"] .add-count', (e) => e.textContent), '2');
+
+    await page.click('.cart-btn');
+    await page.waitForSelector('[name=nombre]', { visible: true });
+    const lineas = await page.$$eval('[data-cart-lines] .line', (ls) => ls.map((l) => l.querySelector('.line-det')?.textContent));
+    assert.deepEqual(lineas, ['Preparación: En leche · Gaseosas: Coca-Cola, Pepsi', 'Preparación: En agua · Gaseosas: Ginger, Ginger']);
+    assert.equal(await page.$eval('[data-cart-total]', (e) => e.textContent), '$42.000');
+    await page.waitForFunction(() => {
+      const d = document.querySelector('[data-drawer]');
+      return d.open && d.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
+    }, { timeout: 5000, polling: 50 });
+    await page.$eval('[name=nombre]', (el) => { el.value = 'Cliente Opciones'; });
+    await page.$eval('[name=direccion]', (el) => { el.value = 'Calle 1'; });
+    await page.click('[data-enviar]');
+    const mensaje = await esperarWhatsApp(page);
+    assert.match(mensaje, /1 x Combo Opciones — \$22\.000\n   ↳ Preparación: En leche · Gaseosas: Coca-Cola, Pepsi/);
+    const p = await ultimoPedido();
+    const items = await ctx.admin(`select precio_unitario, cantidad, detalle from public.pedido_items where pedido_id = $1 order by detalle`, [p.id]);
+    assert.deepEqual(items, [
+      { precio_unitario: 22000, cantidad: 1, detalle: 'Preparación: En leche · Gaseosas: Coca-Cola, Pepsi' },
+      { precio_unitario: 20000, cantidad: 1, detalle: 'Preparación: En agua · Gaseosas: Ginger, Ginger' },
+    ].sort((a, b) => a.detalle.localeCompare(b.detalle)));
+    assert.equal(p.total, 42000, 'el servidor cobra lo mismo que mostró la web');
+    assert.deepEqual(errores, []);
+    await page.close();
+  });
+
+  test('si el dueño quita una gaseosa elegida, esa línea sale del carrito con un aviso', async () => {
+    const clave = 'combo-opciones~' + JSON.stringify([['En agua'], ['Pepsi', 'Coca-Cola']]);
+    const { page } = await abrir({ preparar: new Function(`localStorage.setItem('qb_carrito_v1', ${JSON.stringify(JSON.stringify({ [clave]: 1, clasica: 1 }))})`) });
+    await ctx.staff('bebidas_guardar', { p: { gaseosas: ['Coca-Cola', 'Postobón Manzana'] } });
+    await page.evaluate(() => window.__avisarCambio('ajustes'));
+    await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('qb_carrito_v1'))).length === 1, { timeout: 5000, polling: 50 });
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('qb_carrito_v1'))), { clasica: 1 });
+    await ctx.staff('bebidas_guardar', { p: { gaseosas: ['Coca-Cola', 'Coca-Cola Zero', 'Postobón Manzana', 'Postobón Colombiana', 'Pepsi', 'Ginger'] } });
     await page.close();
   });
 });

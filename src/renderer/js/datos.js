@@ -83,6 +83,7 @@ export function crearApi(fuente) {
     guardarCategoria: (p) => rpc('categoria_guardar', { p }),
     eliminarCategoria: (id) => rpc('categoria_eliminar', { p_id: id }),
     guardarAjustes: (p) => rpc('ajustes_guardar', { p }),
+    guardarBebidas: (p) => rpc('bebidas_guardar', { p }),
     pedidos: (desde, hasta, estados) => rpc('pedidos_listar', { p_desde: desde, p_hasta: hasta, ...(estados ? { p_estados: estados } : {}) }),
     cambiarEstado: (id, estado, motivo) => rpc('pedido_cambiar_estado', { p_id: id, p_estado: estado, ...(motivo ? { p_motivo: motivo } : {}) }),
     actualizarCobro: (id, p) => rpc('pedido_actualizar_cobro', { p_id: id, p }),

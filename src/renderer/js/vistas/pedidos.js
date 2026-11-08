@@ -136,7 +136,7 @@ function tarjetaPedido(p) {
           ${ETIQUETA_ENTREGA[p.tipo_entrega]}${p.direccion ? ` · ${p.direccion}` : ''}</span>
       </div>
       <ul class="pedido-items">
-        ${p.items.map((i) => html`<li><b>${i.cantidad}×</b><span>${i.nombre}</span></li>`)}
+        ${p.items.map((i) => html`<li><b>${i.cantidad}×</b><span>${i.nombre}${i.detalle ? html`<small class="item-detalle">${i.detalle}</small>` : ''}</span></li>`)}
       </ul>
       ${p.notas ? html`<p class="pedido-notas">📝 ${p.notas}</p>` : ''}
       <div class="pedido-pie">

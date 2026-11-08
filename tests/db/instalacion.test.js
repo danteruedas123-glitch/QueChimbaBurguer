@@ -24,7 +24,7 @@ test('se instala de una sola vez en una base nueva y deja el menú listo', async
   const base = await crearBaseVacia();
   await base.db.exec(await readFile(ARCHIVO, 'utf8'));
   const menu = await base.rpc('menu_publico', {}, { rol: 'anon' });
-  assert.equal(menu.productos.length, 97, 'el menú real: 112 productos, 15 jugos ocultos hasta tener precio');
-  assert.equal(menu.destacado.producto, 'salchichimba');
+  assert.equal(menu.productos.length, 96, 'el menú real completo');
+  assert.equal(menu.destacado.producto, 'smash-burger');
   await base.cerrar();
 });
