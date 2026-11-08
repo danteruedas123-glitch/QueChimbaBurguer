@@ -17,6 +17,7 @@
     "release": "electron-builder --win --publish always",
     "test:mutacion": "node tests/mutacion.mjs",
     "sql:unificar": "node scripts/unificar-sql.mjs",
+    "menu:generar": "node scripts/generar-menu.mjs && node scripts/unificar-sql.mjs",
     "build:dir": "electron-builder --win --dir"
   },
   "dependencies": {

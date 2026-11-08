@@ -14,7 +14,8 @@ const normalizar = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '
 export async function montar(contenedor, ctx) {
   const menu = await ctx.api.menu();
   const urlSitio = menu.ajustes?.url_sitio ?? '';
-  const productos = menu.productos;
+  // Solo lo que está a la venta (los ocultos, como los jugos sin precio, no se venden)
+  const productos = menu.productos.filter((p) => p.activo);
   const porId = new Map(productos.map((p) => [p.id, p]));
   const categorias = menu.categorias.filter((c) => productos.some((p) => p.categoria_id === c.id));
 

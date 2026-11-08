@@ -189,8 +189,8 @@ test('registrar una venta de mostrador suma exactamente a la contabilidad de hoy
   const antes = (await rpc('reporte_ventas', { p_desde: hoyEn(), p_hasta: hoyEn() })).datos.resumen.total;
   await irA('venta', '.rejilla-productos .producto-btn');
   const menu = (await rpc('menu_admin')).datos;
-  const clasica = menu.productos.find((p) => p.slug === 'clasica');
-  const limonada = menu.productos.find((p) => p.slug === 'limonada');
+  const clasica = menu.productos.find((p) => p.slug === 'classic-burger');
+  const limonada = menu.productos.find((p) => p.slug === 'mini-pet-coca-cola');
   await page.click(`[data-producto="${clasica.id}"]`);
   await page.click(`[data-producto="${clasica.id}"]`);
   await page.click(`[data-producto="${limonada.id}"]`);

@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { crearBaseLocal } from '../../src/main/db-local.js';
+
+/** Menú pequeño y fijo de las pruebas (el real puede cambiar sin romperlas). */
+export const MENU_PRUEBAS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'menu-pruebas.sql');
 
 /**
  * Base de pruebas con tres actores:
@@ -8,7 +13,7 @@ import { crearBaseLocal } from '../../src/main/db-local.js';
  *   intruso  → usuario autenticado que NO es del personal
  */
 export async function nuevaBase(opciones) {
-  const base = await crearBaseLocal(opciones);
+  const base = await crearBaseLocal({ semilla: MENU_PRUEBAS, ...opciones });
   const staffId = await base.crearUsuario('encargado@quechimba.co', 'x', { nombre: 'Encargado', rol: 'admin' });
   const intrusoId = await base.crearUsuario('intruso@correo.co', 'x');
   const web = (f, a) => base.rpc(f, a, { rol: 'anon' });

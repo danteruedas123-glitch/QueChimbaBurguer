@@ -171,10 +171,11 @@ describe('menú administrado desde la base de datos', () => {
     const [q] = await ctx.admin(`select id, categoria_id from public.productos where slug = 'quechimba'`);
     await ctx.staff('producto_guardar', { p: { id: q.id, categoria_id: q.categoria_id, nombre: 'La Quechimba', precio: 31500, etiqueta: 'Más pedida', foto_url: 'assets/img/quechimba.webp' } });
     await ctx.staff('producto_guardar', { p: { categoria_id: q.categoria_id, nombre: 'Hamburguesa de la Prueba', precio: 21000 } });
+    await ctx.staff('producto_guardar', { p: { categoria_id: q.categoria_id, nombre: 'Smash Burger', precio: 30500 } }); // la de la portada
     const { page, errores } = await abrir();
     await page.waitForFunction(() => document.querySelector('.dish[data-id="hamburguesa-de-la-prueba"]'), { timeout: 10000, polling: 100 });
     assert.equal(await page.$eval('.dish[data-id="quechimba"] .dish-price', (e) => e.textContent), '$31.500');
-    assert.equal(await page.$eval('[data-precio-de="quechimba"]', (e) => e.textContent), '$31.500', 'el precio de la portada también se actualiza');
+    assert.equal(await page.$eval('[data-precio-de="smash-burger"]', (e) => e.textContent), '$30.500', 'el precio de la portada también se actualiza');
     assert.deepEqual(errores, []);
     await page.close();
   });
@@ -245,12 +246,16 @@ describe('pedidos desde la web', () => {
   test('si Supabase está caído, la web sigue funcionando y el pedido sale por WhatsApp', async () => {
     modoSupabase = 'caido';
     const antes = (await ultimoPedido()).numero;
-    const { page, errores } = await abrir();
-    await pedir(page, [['quechimba', 1]]);
-    const mensaje = await esperarWhatsApp(page);
-    modoSupabase = 'normal';
+    let page, errores, mensaje;
+    try {
+      ({ page, errores } = await abrir());
+      await pedir(page, [['classic-burger', 1]]); // menú de respaldo (config.js)
+      mensaje = await esperarWhatsApp(page);
+    } finally {
+      modoSupabase = 'normal'; // pase lo que pase, las demás pruebas siguen con la base disponible
+    }
     assert.doesNotMatch(mensaje, /Pedido #/, 'sin registro no hay número');
-    assert.match(mensaje, /1 x La Quechimba/);
+    assert.match(mensaje, /1 x Classic Burger/);
     assert.equal((await ultimoPedido()).numero, antes, 'no se creó nada en la base de datos');
     assert.deepEqual(errores, []);
     await page.close();
@@ -567,9 +572,9 @@ describe('compatibilidad y rendimiento', () => {
   test('sin Supabase configurado la web funciona como antes (menú de config.js)', async () => {
     peticiones.length = 0;
     const { page, errores } = await abrir({ conSupabase: false });
-    await pedir(page, [['clasica', 1]]);
+    await pedir(page, [['classic-burger', 1]]);
     const mensaje = await esperarWhatsApp(page);
-    assert.match(mensaje, /1 x La Clásica — \$18\.000/);
+    assert.match(mensaje, /1 x Classic Burger — \$17\.000/);
     assert.equal(peticiones.length, 0, 'no debe llamar a Supabase');
     assert.deepEqual(errores, []);
     await page.close();

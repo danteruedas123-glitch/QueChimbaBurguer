@@ -53,7 +53,7 @@ export async function crearBaseVacia() {
   return new BaseLocal(db);
 }
 
-export async function crearBaseLocal({ conSemilla = true } = {}) {
+export async function crearBaseLocal({ conSemilla = true, semilla = path.join(DIR_SUPABASE, 'seed.sql') } = {}) {
   const db = new PGlite();
   await db.exec(ENTORNO_SUPABASE);
 
@@ -67,7 +67,7 @@ export async function crearBaseLocal({ conSemilla = true } = {}) {
     }
   }
   if (conSemilla) {
-    await db.exec(await readFile(path.join(DIR_SUPABASE, 'seed.sql'), 'utf8'));
+    await db.exec(await readFile(semilla, 'utf8'));
   }
   return new BaseLocal(db);
 }

@@ -29,7 +29,7 @@ declare
   r       float;
   nombres text[] := array['Andrea','Camilo','Daniela','Jorge','Luisa','Mateo','Paola','Sebastián','Valentina','Yesid'];
 begin
-  select array_agg(id) into v_prods from public.productos;
+  select array_agg(id) into v_prods from public.productos where activo and precio > 0;
   for d in 0..44 loop
     for i in 1..(8 + floor(random() * 13)::int) loop
       v_ts := (v_hoy - d)::timestamp at time zone 'America/Bogota' + interval '11 hours' + random() * interval '12 hours';
