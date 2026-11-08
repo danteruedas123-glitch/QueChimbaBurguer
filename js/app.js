@@ -17,8 +17,9 @@
   /* ---------- Menú: viene de Supabase (si está configurado) o de config.js ---------- */
   // Formato interno: producto { id (slug), categoria (slug), nombre, descripcion, precio, etiqueta, foto, agotado }
   let categorias = CFG.categorias;
-  let productos = CFG.productos.map((p) => ({ ...p, agotado: !!p.agotado }));
+  let productos = CFG.productos.map((p) => ({ ...p, agotado: !!p.agotado, opciones: p.opciones ?? [] }));
   let destacado = CFG.promo ?? null;
+  let bebidas = CFG.bebidas ?? { gaseosas: [], bebidas_michelada: [] };
   let pedidosWebActivos = true;
   let festividad = CFG.festividad ?? { tema: CFG.tema ?? 'normal' };
   let productoPorId = new Map(productos.map((p) => [p.id, p]));
@@ -49,9 +50,11 @@
     categorias: m.categorias.map((c) => ({ id: c.slug, nombre: c.nombre })),
     productos: m.productos.map((p) => ({
       id: p.slug, categoria: p.categoria, nombre: p.nombre, descripcion: p.descripcion,
-      precio: p.precio, etiqueta: p.etiqueta || undefined, foto: p.foto_url || 'assets/img/logo.webp', agotado: !!p.agotado
+      precio: p.precio, etiqueta: p.etiqueta || undefined, foto: p.foto_url || 'assets/img/logo.webp', agotado: !!p.agotado,
+      opciones: p.opciones ?? []
     })),
     destacado: m.destacado ? { producto: m.destacado.producto, titulo: m.destacado.titulo, foto: m.destacado.foto_url } : null,
+    bebidas: m.bebidas ?? null,
     pedidosWebActivos: m.pedidos_web_activos !== false,
     festividad: m.festividad ?? { tema: 'normal' }
   });
@@ -60,6 +63,7 @@
     categorias = m.categorias;
     productos = m.productos;
     destacado = m.destacado;
+    if (m.bebidas) bebidas = m.bebidas;
     pedidosWebActivos = m.pedidosWebActivos;
     festividad = m.festividad ?? { tema: 'normal' };
     productoPorId = new Map(productos.map((p) => [p.id, p]));
@@ -81,6 +85,29 @@
     if (!esUnsplash(url)) return url;
     return `${url}?auto=format&fit=crop&w=${ancho}${alto ? `&h=${alto}` : ''}&q=72`;
   };
+
+  /* ---------- Opciones al pedir (bebida del combo, en agua o en leche, nivel…) ---------- */
+  // Cada grupo: { titulo, elige, opciones: [{ nombre, extra }] } o { titulo, elige, lista } (bebidas de Ajustes)
+  const opcionesDe = (g) => (g.lista ? (bebidas[g.lista] ?? []).map((nombre) => ({ nombre, extra: 0 })) : g.opciones);
+  const tieneOpciones = (p) => (p?.opciones?.length ?? 0) > 0;
+  const tieneExtras = (p) => (p?.opciones ?? []).some((g) => !g.lista && g.opciones.some((o) => o.extra > 0));
+  // Línea del carrito: "slug", o "slug~[[...],[...]]" cuando lleva opciones elegidas
+  const claveLinea = (id, elegidas) => (elegidas ? `${id}~${JSON.stringify(elegidas)}` : id);
+  const leerLinea = (clave) => {
+    const i = clave.indexOf('~');
+    if (i < 0) return { id: clave, elegidas: null };
+    try { return { id: clave.slice(0, i), elegidas: JSON.parse(clave.slice(i + 1)) }; } catch { return { id: clave.slice(0, i), elegidas: [] }; }
+  };
+  // ¿Lo elegido sigue valiendo? (el dueño pudo cambiar las opciones o las bebidas)
+  const eleccionValida = (p, elegidas) => {
+    if (!tieneOpciones(p)) return elegidas === null;
+    return Array.isArray(elegidas) && elegidas.length === p.opciones.length && p.opciones.every((g, i) =>
+      Array.isArray(elegidas[i]) && elegidas[i].length === g.elige && elegidas[i].every((n) => opcionesDe(g).some((o) => o.nombre === n)));
+  };
+  const extraDe = (p, elegidas) => (elegidas ?? []).reduce((s, sel, i) =>
+    s + sel.reduce((t, n) => t + (opcionesDe(p.opciones[i]).find((o) => o.nombre === n)?.extra ?? 0), 0), 0);
+  const detalleDe = (p, elegidas) => (elegidas ?? []).map((sel, i) => `${p.opciones[i].titulo}: ${sel.join(', ')}`).join(' · ');
+  const precioLinea = (clave) => { const { id, elegidas } = leerLinea(clave); const p = productoPorId.get(id); return p.precio + extraDe(p, elegidas); };
 
   const almacen = {
     leer(clave, defecto) {
@@ -219,7 +246,7 @@
         <h3 class="dish-name">${escapar(p.nombre)}</h3>
         <p class="dish-desc">${escapar(p.descripcion)}</p>
         <div class="dish-foot">
-          <span class="dish-price">${precio(p.precio)}</span>
+          <span class="dish-price">${tieneExtras(p) ? '<small>desde </small>' : ''}${precio(p.precio)}</span>
           <div class="dish-action" data-action-for="${escapar(p.id)}"></div>
         </div>
       </div>
@@ -308,33 +335,30 @@
     abrirCategoria(a.dataset.abrirCat);
   }));
 
-  /* ---------- Franja destacada ---------- */
-  const pintarPromo = () => {
-    const promoCfg = destacado ?? {};
-    const promo = productoPorId.get(promoCfg.producto);
-    const seccion = $('#destacado');
-    if (!seccion) return;
-    seccion.hidden = !promo;
-    if (!promo) return;
-    const cat = categorias.find((c) => c.id === promo.categoria);
-    $('[data-promo-title]').textContent = promoCfg.titulo ?? 'Destacado';
-    $('[data-promo-name]').textContent = promo.nombre;
-    $('[data-promo-desc]').textContent = promo.descripcion;
-    $('[data-promo-price]').textContent = precio(promo.precio);
-    $('[data-promo-tag]').textContent = promo.etiqueta ?? '';
-    const img = $('[data-promo-img]');
-    img.src = promoCfg.foto || foto(promo.foto, 720, 608);
-    img.alt = promo.nombre;
-    $('.promo [data-action-for]').dataset.actionFor = promo.id;
-    const enlace = $('[data-promo-link]');
-    enlace.hidden = false;
-    if (cat) {
-      enlace.dataset.abrirCat = cat.id;
-      enlace.querySelector('span').textContent = `Ver todas las opciones de ${cat.nombre.toLowerCase()}`;
-    } else {
-      enlace.hidden = true;
-    }
+  /* ---------- Portada: el producto destacado (se elige en la app → Ajustes) ---------- */
+  const heroImg = $('[data-hero-img]');
+  const HERO_ORIGINAL = { src: heroImg?.getAttribute('src'), alt: heroImg?.alt };
+  const pintarPortada = () => {
+    const ticket = $('[data-hero-ticket]');
+    if (!ticket || !heroImg) return;
+    const p = destacado && productoPorId.get(destacado.producto);
+    ticket.hidden = !p;
+    const src = p ? (destacado.foto || foto(p.foto, 720, 720)) : HERO_ORIGINAL.src;
+    if (heroImg.getAttribute('src') !== src) heroImg.src = src;
+    heroImg.alt = p ? p.nombre : HERO_ORIGINAL.alt;
+    if (!p) return;
+    $('[data-hero-titulo]').textContent = destacado.titulo || 'Recomendado';
+    $('[data-hero-nombre]').textContent = p.nombre;
+    $('[data-hero-precio]').textContent = `${tieneExtras(p) ? 'desde ' : ''}${precio(p.precio)}`;
+    ticket.dataset.producto = p.id;
+    ticket.setAttribute('aria-label', `Pedir ${p.nombre}, ${precio(p.precio)}`);
   };
+  $('[data-hero-ticket]')?.addEventListener('click', (e) => {
+    const id = e.currentTarget.dataset.producto;
+    const p = productoPorId.get(id);
+    if (!p || !pedidosWebActivos || p.agotado) { abrirCategoria(p?.categoria); return; }
+    if (tieneOpciones(p)) abrirOpciones(id); else cambiarCantidad(id, 1);
+  });
 
   /* ---------- Carrito ---------- */
   const carrito = new Map(
@@ -343,37 +367,43 @@
   // Quita del carrito lo que ya no existe o se agotó (ej. el encargado lo cambió en la app)
   const depurarCarrito = () => {
     const quitados = [];
-    carrito.forEach((n, id) => {
+    carrito.forEach((n, clave) => {
+      const { id, elegidas } = leerLinea(clave);
       const p = productoPorId.get(id);
-      if (!p || p.agotado) { carrito.delete(id); if (p) quitados.push(p.nombre); }
+      if (!p || p.agotado || !eleccionValida(p, elegidas)) { carrito.delete(clave); if (p) quitados.push(p.nombre); }
     });
     guardarCarrito();
     return quitados;
   };
+  const unidadesDe = (id) => [...carrito].reduce((s, [clave, n]) => s + (leerLinea(clave).id === id ? n : 0), 0);
 
   const totales = () => {
     let unidades = 0;
     let subtotal = 0;
-    carrito.forEach((n, id) => { unidades += n; subtotal += n * productoPorId.get(id).precio; });
+    carrito.forEach((n, clave) => { unidades += n; subtotal += n * precioLinea(clave); });
     return { unidades, subtotal };
   };
 
-  const controlCantidad = (p, n) => `
-    <div class="stepper" role="group" aria-label="Cantidad de ${escapar(p.nombre)}">
-      <button type="button" data-dec="${escapar(p.id)}" aria-label="Quitar una ${escapar(p.nombre)}">${icono('minus')}</button>
+  const controlCantidad = (clave, nombre, n) => `
+    <div class="stepper" role="group" aria-label="Cantidad de ${escapar(nombre)}">
+      <button type="button" data-dec="${escapar(clave)}" aria-label="Quitar una ${escapar(nombre)}">${icono('minus')}</button>
       <output aria-live="polite">${n}</output>
-      <button type="button" data-inc="${escapar(p.id)}" aria-label="Agregar otra ${escapar(p.nombre)}">${icono('plus')}</button>
+      <button type="button" data-inc="${escapar(clave)}" aria-label="Agregar otra ${escapar(nombre)}">${icono('plus')}</button>
     </div>`;
 
   const pintarAccion = (id) => {
     const p = productoPorId.get(id);
-    const n = carrito.get(id) ?? 0;
+    if (!p) return;
+    const n = unidadesDe(id);
     $$(`[data-action-for="${CSS.escape(id)}"]`).forEach((caja) => {
       caja.innerHTML = p.agotado
         ? '<span class="soldout">Agotado</span>'
-        : n
-          ? controlCantidad(p, n)
-          : `<button class="add-btn" type="button" data-inc="${escapar(id)}" aria-label="Agregar ${escapar(p.nombre)} al pedido">${icono('plus')}<span>Agregar</span></button>`;
+        : tieneOpciones(p)
+          // Con opciones: cada vez se elige (ej. otra bebida); el número dice cuántos lleva
+          ? `<button class="add-btn" type="button" data-elegir="${escapar(id)}" aria-label="${n ? 'Agregar otro' : 'Agregar'} ${escapar(p.nombre)} al pedido">${icono('plus')}<span>${n ? 'Otro' : 'Agregar'}</span>${n ? `<b class="add-count">${n}</b>` : ''}</button>`
+          : n
+            ? controlCantidad(id, p.nombre, n)
+            : `<button class="add-btn" type="button" data-inc="${escapar(id)}" aria-label="Agregar ${escapar(p.nombre)} al pedido">${icono('plus')}<span>Agregar</span></button>`;
       caja.closest('.dish')?.classList.toggle('in-cart', n > 0);
     });
   };
@@ -387,7 +417,7 @@
     // Número de productos pedidos en cada categoría del menú
     $$('[data-cat-badge]').forEach((el) => {
       let n = 0;
-      carrito.forEach((q, id) => { if (productoPorId.get(id).categoria === el.dataset.catBadge) n += q; });
+      carrito.forEach((q, clave) => { if (productoPorId.get(leerLinea(clave).id).categoria === el.dataset.catBadge) n += q; });
       el.textContent = n;
       el.hidden = n === 0;
       el.setAttribute('aria-label', `${n} en tu pedido`);
@@ -402,14 +432,17 @@
     $('[data-cart-filled]').hidden = !hay;
     $('[data-cart-foot]').hidden = !hay;
 
-    lineas.innerHTML = [...carrito].map(([id, n]) => {
+    lineas.innerHTML = [...carrito].map(([clave, n]) => {
+      const { id, elegidas } = leerLinea(clave);
       const p = productoPorId.get(id);
+      const unitario = precioLinea(clave);
+      const detalle = detalleDe(p, elegidas);
       return `
         <li class="line">
           <img src="${escapar(foto(p.foto, 120, 120))}" width="60" height="60" alt="">
-          <div class="line-info"><strong>${escapar(p.nombre)}</strong><span>${precio(p.precio)} c/u</span></div>
-          <span class="line-total">${precio(p.precio * n)}</span>
-          ${controlCantidad(p, n)}
+          <div class="line-info"><strong>${escapar(p.nombre)}</strong>${detalle ? `<small class="line-det">${escapar(detalle)}</small>` : ''}<span>${precio(unitario)} c/u</span></div>
+          <span class="line-total">${precio(unitario * n)}</span>
+          ${controlCantidad(clave, p.nombre, n)}
         </li>`;
     }).join('');
   };
@@ -417,12 +450,13 @@
   const guardarCarrito = () => almacen.guardar(KEY_CARRITO, Object.fromEntries(carrito));
 
   const botonCarrito = $('.cart-btn');
-  const cambiarCantidad = (id, delta) => {
+  const cambiarCantidad = (clave, delta) => {
+    const { id } = leerLinea(clave);
     const p = productoPorId.get(id);
     if (!p || (p.agotado && delta > 0)) return;
-    const antes = carrito.get(id) ?? 0;
+    const antes = carrito.get(clave) ?? 0;
     const n = Math.max(0, Math.min(99, antes + delta));
-    if (n) carrito.set(id, n); else carrito.delete(id);
+    if (n) carrito.set(clave, n); else carrito.delete(clave);
     guardarCarrito();
     pintarAccion(id);
     pintarCarrito();
@@ -436,6 +470,8 @@
 
   // Un solo listener para todos los botones + / − del sitio
   document.addEventListener('click', (e) => {
+    const elegir = e.target.closest('[data-elegir]');
+    if (elegir) { abrirOpciones(elegir.dataset.elegir); return; }
     const b = e.target.closest('[data-inc], [data-dec]');
     if (!b) return;
     const sube = b.hasAttribute('data-inc');
@@ -450,7 +486,7 @@
   });
 
   $('[data-clear-cart]')?.addEventListener('click', () => {
-    const ids = [...carrito.keys()];
+    const ids = [...new Set([...carrito.keys()].map((c) => leerLinea(c).id))];
     carrito.clear();
     guardarCarrito();
     ids.forEach(pintarAccion);
@@ -581,13 +617,13 @@
     menuDibujado = true;
     aplicarTema(festividad);
     pintarMenu();
-    pintarPromo();
+    pintarPortada();
     pintarPreciosSueltos();
     const quitados = depurarCarrito();
     productos.forEach((p) => pintarAccion(p.id));
     pintarCarrito();
     pintarAvisoPausa();
-    if (quitados.length) avisar(`Se quitó de tu pedido (agotado): <b>${escapar(quitados.join(', '))}</b>`);
+    if (quitados.length) avisar(`Se quitó de tu pedido (agotado o cambió): <b>${escapar(quitados.join(', '))}</b>`);
   };
 
   // 1) Arranque inmediato con el último menú conocido (o el de config.js)
@@ -658,10 +694,14 @@
   const armarMensaje = (datos, registro = null) => {
     // Si el pedido quedó registrado, se usan los valores calculados por el servidor
     const lineasPedido = registro
-      ? registro.items.map((i) => ({ nombre: i.nombre, n: i.cantidad, valor: i.subtotal }))
-      : [...carrito].map(([id, n]) => { const p = productoPorId.get(id); return { nombre: p.nombre, n, valor: p.precio * n }; });
+      ? registro.items.map((i) => ({ nombre: i.nombre, n: i.cantidad, valor: i.subtotal, detalle: i.detalle }))
+      : [...carrito].map(([clave, n]) => {
+        const { id, elegidas } = leerLinea(clave);
+        const p = productoPorId.get(id);
+        return { nombre: p.nombre, n, valor: precioLinea(clave) * n, detalle: detalleDe(p, elegidas) };
+      });
     const subtotal = registro ? registro.subtotal : totales().subtotal;
-    const items = lineasPedido.map((l) => `• ${l.n} x ${l.nombre} — ${precio(l.valor)}`);
+    const items = lineasPedido.map((l) => `• ${l.n} x ${l.nombre} — ${precio(l.valor)}${l.detalle ? `\n   ↳ ${l.detalle}` : ''}`);
     const domicilio = datos.entrega === 'Domicilio';
     return [
       `¡Hola, ${negocio.nombre}! 🍔`,
@@ -680,7 +720,8 @@
   };
 
   const PAGOS = { efectivo: 'efectivo', nequi: 'nequi', daviplata: 'daviplata', transferencia: 'transferencia', tarjeta: 'tarjeta' };
-  const ERRORES_NEGOCIO = ['PEDIDOS_PAUSADOS', 'PRODUCTO_NO_DISPONIBLE', 'PRODUCTO_NO_EXISTE', 'DATO_INVALIDO', 'DEMASIADOS_PEDIDOS', 'PEDIDO_VACIO'];
+  const ERRORES_NEGOCIO = ['PEDIDOS_PAUSADOS', 'PRODUCTO_NO_DISPONIBLE', 'PRODUCTO_NO_EXISTE', 'DATO_INVALIDO', 'DEMASIADOS_PEDIDOS', 'PEDIDO_VACIO',
+    'OPCIONES_INCOMPLETAS', 'OPCION_NO_EXISTE'];
   let enviando = false;
 
   form.addEventListener('submit', async (e) => {
@@ -703,7 +744,10 @@
     $('[data-enviar]').disabled = true;
     try {
       registro = await rpc('crear_pedido_web', {
-        p_items: [...carrito].map(([slug, cantidad]) => ({ slug, cantidad })),
+        p_items: [...carrito].map(([clave, cantidad]) => {
+          const { id, elegidas } = leerLinea(clave);
+          return elegidas ? { slug: id, cantidad, opciones: elegidas } : { slug: id, cantidad };
+        }),
         p_cliente: {
           nombre: datos.nombre,
           tipo_entrega: datos.entrega === 'Domicilio' ? 'domicilio' : 'recoger',
@@ -730,7 +774,7 @@
     if (ventana) ventana.location.href = url; else location.href = url;
     if (registro) {
       // Pedido registrado: se vacía el carrito para no enviarlo dos veces por error
-      const ids = [...carrito.keys()];
+      const ids = [...new Set([...carrito.keys()].map((c) => leerLinea(c).id))];
       carrito.clear();
       guardarCarrito();
       ids.forEach(pintarAccion);
@@ -739,6 +783,57 @@
     }
     avisar(registro ? `Pedido <b>#${String(registro.numero).padStart(4, '0')}</b> registrado · abriendo WhatsApp…` : 'Abriendo WhatsApp…');
   });
+
+  /* ---------- Ventanita de opciones: elegir bebida, preparación, nivel… ---------- */
+  const dlgOpc = $('[data-opciones]');
+  const formOpc = $('[data-opciones-form]');
+  let opcActual = null;
+  const leerElegidas = () => opcActual.opciones.map((g, i) => (g.elige === 1
+    ? [formOpc.querySelector(`input[name="g${i}"]:checked`)?.value].filter(Boolean)
+    : $$(`select[name^="g${i}-"]`, formOpc).map((s) => s.value).filter(Boolean)));
+  const actualizarOpciones = () => {
+    const elegidas = leerElegidas();
+    const completo = opcActual.opciones.every((g, i) => elegidas[i].length === g.elige);
+    $('[data-opc-precio]').textContent = precio(opcActual.precio + extraDe(opcActual, elegidas));
+    $('[data-opc-agregar]').disabled = !completo;
+    opcActual.opciones.forEach((g, i) => {
+      $(`[data-opc-falta="${i}"]`).hidden = elegidas[i].length === g.elige;
+    });
+  };
+  function abrirOpciones(id) {
+    const p = productoPorId.get(id);
+    if (!p || p.agotado || !pedidosWebActivos || !dlgOpc) return;
+    opcActual = p;
+    $('[data-opc-foto]').src = foto(p.foto, 600, 450);
+    $('[data-opc-nombre]').textContent = p.nombre;
+    $('[data-opc-desc]').textContent = p.descripcion;
+    $('[data-opc-grupos]').innerHTML = p.opciones.map((g, i) => {
+      const lista = opcionesDe(g);
+      const ayuda = `<small class="opc-falta" data-opc-falta="${i}">Elige ${g.elige === 1 ? 'una' : g.elige}</small>`;
+      if (g.elige === 1) {
+        const marcada = g.lista ? null : lista[0]?.nombre; // lo básico ya viene marcado; la bebida se elige
+        return `<fieldset class="opc-grupo"><legend>${escapar(g.titulo)} ${ayuda}</legend><div class="opc-chips">${lista.map((o) => `
+          <label class="opc-chip"><input type="radio" name="g${i}" value="${escapar(o.nombre)}" ${o.nombre === marcada ? 'checked' : ''}>
+            <span>${escapar(o.nombre)}${o.extra ? ` <em>+${precio(o.extra)}</em>` : ''}</span></label>`).join('')}</div></fieldset>`;
+      }
+      const singular = g.lista === 'gaseosas' ? 'Gaseosa' : 'Opción';
+      return `<fieldset class="opc-grupo"><legend>${escapar(g.titulo)} ${ayuda}</legend><div class="opc-selects">${Array.from({ length: g.elige }, (_, k) => `
+        <label class="field"><span>${singular} ${k + 1}</span><select name="g${i}-${k}"><option value="">Elige…</option>${lista.map((o) =>
+          `<option value="${escapar(o.nombre)}">${escapar(o.nombre)}${o.extra ? ` (+${precio(o.extra)})` : ''}</option>`).join('')}</select></label>`).join('')}</div></fieldset>`;
+    }).join('');
+    actualizarOpciones();
+    dlgOpc.showModal();
+  }
+  formOpc?.addEventListener('change', actualizarOpciones);
+  formOpc?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const elegidas = leerElegidas();
+    if (!opcActual || !eleccionValida(opcActual, elegidas)) return;
+    cambiarCantidad(claveLinea(opcActual.id, elegidas), 1);
+    dlgOpc.close();
+  });
+  $$('[data-opciones-cerrar]').forEach((b) => b.addEventListener('click', () => dlgOpc.close()));
+  dlgOpc?.addEventListener('click', (e) => { if (e.target === dlgOpc) dlgOpc.close(); });
 
   /* ---------- Aviso flotante ---------- */
   const toast = $('[data-toast]');

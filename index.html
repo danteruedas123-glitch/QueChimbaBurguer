@@ -111,7 +111,7 @@
 
         <div class="hero-visual">
           <div class="hero-plate">
-            <img src="assets/img/hero-quechimba.webp" width="720" height="720" alt="Hamburguesa con el pan sellado Que Chimba" fetchpriority="high">
+            <img src="assets/img/hero-quechimba.webp" width="720" height="720" alt="Hamburguesa con el pan sellado Que Chimba" fetchpriority="high" data-hero-img>
           </div>
           <div class="hero-seal" aria-hidden="true">
             <svg viewBox="0 0 120 120">
@@ -122,11 +122,11 @@
             <img src="assets/img/logo.webp" width="56" height="56" alt="">
           </div>
           <div class="hero-figura" data-figura aria-hidden="true" hidden></div>
-          <div class="hero-ticket" aria-hidden="true">
-            <span>La más chimba</span>
-            <strong>Smash Burger</strong>
-            <em data-precio-de="smash-burger"></em>
-          </div>
+          <button type="button" class="hero-ticket" data-hero-ticket hidden>
+            <span data-hero-titulo></span>
+            <strong data-hero-nombre></strong>
+            <em><b data-hero-precio></b><i class="hero-pedir">Pedir</i></em>
+          </button>
         </div>
       </div>
     </section>
@@ -163,24 +163,6 @@
     </section>
 
     <!-- ============ PROMO / COMBOS ============ -->
-    <section class="promo" id="destacado" aria-labelledby="promo-title">
-      <div class="container promo-inner">
-        <div class="promo-media reveal">
-          <img width="720" height="608" loading="lazy" decoding="async" alt="" data-promo-img>
-          <span class="promo-badge" data-promo-tag></span>
-        </div>
-        <div class="promo-copy reveal">
-          <span class="eyebrow eyebrow--light" data-promo-title></span>
-          <h2 id="promo-title" data-promo-name></h2>
-          <p data-promo-desc></p>
-          <div class="promo-buy">
-            <span class="promo-price" data-promo-price></span>
-            <div class="dish-action dish-action--lg" data-action-for=""></div>
-          </div>
-          <a class="text-link" href="#menu" data-abrir-cat="" data-promo-link><span>Ver más</span> <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
-        </div>
-      </div>
-    </section>
 
     <!-- ============ UBICACIÓN ============ -->
     <section class="section location" id="ubicacion" aria-labelledby="loc-title">
@@ -233,6 +215,22 @@
   </button>
 
   <!-- ============ PANEL DEL PEDIDO ============ -->
+  <!-- Ventanita para elegir opciones (bebida del combo, en agua o en leche, nivel…) -->
+  <dialog class="opciones" data-opciones aria-labelledby="opc-titulo">
+    <form class="opciones-inner" data-opciones-form>
+      <button type="button" class="opciones-cerrar" data-opciones-cerrar aria-label="Cerrar">&times;</button>
+      <img class="opciones-foto" data-opc-foto width="600" height="450" alt="">
+      <div class="opciones-cuerpo">
+        <h2 id="opc-titulo" data-opc-nombre></h2>
+        <p class="opciones-desc" data-opc-desc></p>
+        <div data-opc-grupos></div>
+      </div>
+      <div class="opciones-pie">
+        <button type="submit" class="btn btn--primary btn--lg opciones-agregar" data-opc-agregar>Agregar · <span data-opc-precio></span></button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="drawer" data-drawer aria-labelledby="drawer-title">
     <div class="drawer-inner">
       <header class="drawer-head">
