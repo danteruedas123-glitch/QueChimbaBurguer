@@ -45,8 +45,33 @@
     }
   }
 
-  // Convierte el menú de la base de datos al formato del sitio
-  const desdeServidor = (m) => ({
+  /* Revisión de seguridad del menú (del servidor o guardado en el navegador):
+     descarta lo que no tenga la forma correcta para que un dato dañado nunca
+     deje la página sin menú. Si no queda nada usable, devuelve null. */
+  const esTexto = (x) => typeof x === 'string' && x.length > 0;
+  const esPrecio = (x) => Number.isInteger(x) && x >= 0 && x <= 5_000_000;
+  const grupoSano = (g) => g && esTexto(g.titulo) && Number.isInteger(g.elige) && g.elige >= 1 && g.elige <= 5
+    && (g.lista ? esTexto(g.lista) : Array.isArray(g.opciones) && g.opciones.length >= 2 && g.opciones.every((o) => o && esTexto(o.nombre) && esPrecio(o.extra)));
+  const menuSano = (m) => {
+    if (!m || typeof m !== 'object' || !Array.isArray(m.categorias) || !Array.isArray(m.productos)) return null;
+    const categorias = m.categorias.filter((c) => c && esTexto(c.id) && esTexto(c.nombre));
+    const productos = m.productos
+      .filter((p) => p && esTexto(p.id) && esTexto(p.categoria) && esTexto(p.nombre) && esPrecio(p.precio)
+        && (p.opciones == null || (Array.isArray(p.opciones) && p.opciones.every(grupoSano))))
+      .map((p) => ({ ...p, descripcion: typeof p.descripcion === 'string' ? p.descripcion : '', foto: esTexto(p.foto) ? p.foto : 'assets/img/logo.webp',
+        etiqueta: esTexto(p.etiqueta) ? p.etiqueta : undefined, agotado: !!p.agotado, opciones: p.opciones ?? [] }));
+    if (!categorias.length || !productos.length) return null;
+    const bebidas = m.bebidas && typeof m.bebidas === 'object' && !Array.isArray(m.bebidas)
+      ? Object.fromEntries(Object.entries(m.bebidas).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.filter(esTexto)]))
+      : null;
+    const destacado = m.destacado && typeof m.destacado === 'object' && esTexto(m.destacado.producto) ? m.destacado : null;
+    const festividad = m.festividad && typeof m.festividad === 'object' ? m.festividad : { tema: 'normal' };
+    return { categorias, productos, destacado, bebidas, festividad, pedidosWebActivos: m.pedidosWebActivos !== false };
+  };
+
+  // Convierte el menú de la base de datos al formato del sitio (null si viene dañado)
+  const desdeServidor = (m) => { try { return menuSano(desdeServidorCrudo(m)); } catch { return null; } };
+  const desdeServidorCrudo = (m) => ({
     categorias: m.categorias.map((c) => ({ id: c.slug, nombre: c.nombre })),
     productos: m.productos.map((p) => ({
       id: p.slug, categoria: p.categoria, nombre: p.nombre, descripcion: p.descripcion,
@@ -626,16 +651,17 @@
     if (quitados.length) avisar(`Se quitó de tu pedido (agotado o cambió): <b>${escapar(quitados.join(', '))}</b>`);
   };
 
-  // 1) Arranque inmediato con el último menú conocido (o el de config.js)
+  // 1) Arranque inmediato con el último menú conocido (o el de config.js); si está dañado, se ignora
   let menuGuardado = conSupabase ? almacen.leer(KEY_MENU, null) : null;
-  if (menuGuardado?.datos) usarMenu(menuGuardado.datos);
+  const guardadoSano = menuSano(menuGuardado?.datos);
+  if (guardadoSano) usarMenu(guardadoSano); else menuGuardado = null;
 
   // 2) Menú actualizado desde Supabase; si falla, el sitio sigue funcionando igual
   async function refrescarMenu() {
     if (!conSupabase) return;
     try {
       const nuevo = desdeServidor(await rpc('menu_publico'));
-      if (!nuevo.productos.length) return;
+      if (!nuevo) { console.warn('El servidor respondió un menú dañado; se usa el guardado.'); return; }
       const cambio = JSON.stringify(nuevo) !== JSON.stringify(menuGuardado?.datos ?? null);
       menuGuardado = { t: Date.now(), datos: nuevo };
       almacen.guardar(KEY_MENU, menuGuardado);
@@ -756,6 +782,11 @@
           notas: datos.notas
         }
       }, 8000);
+      // Respuesta inesperada del servidor: no se confía en ella; el pedido sale igual por WhatsApp
+      if (!registro || !Number.isInteger(registro.numero) || !Array.isArray(registro.items) || !Number.isInteger(registro.subtotal)) {
+        console.warn('Respuesta inesperada al registrar el pedido; se envía solo por WhatsApp.');
+        registro = null;
+      }
     } catch (err) {
       // Errores del negocio: se informa y NO se envía. Fallas de red: se envía solo por WhatsApp.
       if (ERRORES_NEGOCIO.includes(err.hint)) {
@@ -875,7 +906,16 @@
      pedir el menú AL INSTANTE, sin recargar. El aviso no trae datos: el menú
      siempre se pide a menu_publico(). Conexión mínima, sin librerías. */
   let refrescoPendiente;
-  const refrescarPronto = () => { clearTimeout(refrescoPendiente); refrescoPendiente = setTimeout(refrescarMenu, 50); };
+  // El canal en vivo es público: si alguien lo inunda de avisos, la web igual
+  // consulta el menú como máximo una vez cada 2 s (la primera vez, al instante).
+  let ultimoRefresco = 0;
+  // Si ya hay una consulta programada no se reprograma: así una inundación
+  // continua no puede posponer las actualizaciones para siempre.
+  const refrescarPronto = () => {
+    if (refrescoPendiente) return;
+    const espera = Math.max(50, ultimoRefresco + 2000 - Date.now());
+    refrescoPendiente = setTimeout(() => { refrescoPendiente = null; ultimoRefresco = Date.now(); refrescarMenu(); }, espera);
+  };
 
   function escucharCambios() {
     if (!conSupabase || typeof WebSocket !== 'function') return;

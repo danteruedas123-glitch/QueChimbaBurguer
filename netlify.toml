@@ -15,6 +15,10 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    # Política de contenido: solo se ejecuta el código propio de la web (el script
+    # de arranque va autorizado por su huella sha256; si se cambia, hay que
+    # recalcularla). Conexiones solo a Supabase; mapa de Google en marco.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-Du+OJKJSbdUgz5nrHeWWINvez6XKDDU/tyj/5c2uvwo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https://twnrwzvrxejstcwhsjvi.supabase.co wss://twnrwzvrxejstcwhsjvi.supabase.co; frame-src https://www.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 
 # Fuente de títulos: nunca cambia → caché de 1 año
 [[headers]]
