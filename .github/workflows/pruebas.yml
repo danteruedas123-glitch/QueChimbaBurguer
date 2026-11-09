@@ -45,9 +45,14 @@ jobs:
           New-Item -ItemType Directory -Force capturas | Out-Null
           node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-e2e.tap "tests/e2e/*.test.js"
 
+      - name: Pruebas de estrés (ataques, volumen extremo, seguridad, memoria)
+        env:
+          QB_WEB_DIR: ${{ github.workspace }}/web-sitio
+        run: node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-estres.tap "tests/estres/*.test.js"
+
       - name: Anotar pruebas fallidas
         if: failure()
-        run: node tests/anotar-fallos.mjs resultados-bd.tap resultados-e2e.tap
+        run: node tests/anotar-fallos.mjs resultados-bd.tap resultados-e2e.tap resultados-estres.tap
 
       - name: Guardar capturas de pantalla
         if: always()

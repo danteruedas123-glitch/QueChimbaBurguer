@@ -232,12 +232,16 @@ const ctx = {
   },
 };
 
+let turnoNavegacion = 0;
 async function navegar(id) {
   if (!VISTAS[id]) id = 'pedidos';
   if (vistaActual === id) return;
   desmontar?.();
   desmontar = null;
   vistaActual = id;
+  // Si el encargado cambia de sección antes de que esta termine de cargar, su
+  // limpieza no se puede perder (si no, sus eventos quedarían vivos para siempre)
+  const turno = ++turnoNavegacion;
   $$('[data-vista]').forEach((a) => { if (a.dataset.vista === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   $('[data-titulo]').textContent = VISTAS[id].titulo;
   // Contenedor NUEVO en cada sección: así los eventos de la sección anterior
@@ -246,8 +250,11 @@ async function navegar(id) {
   const contenedor = viejo.cloneNode(false);
   viejo.replaceWith(contenedor);
   try {
-    desmontar = await VISTAS[id].modulo.montar(contenedor, ctx) ?? null;
+    const limpiar = await VISTAS[id].modulo.montar(contenedor, ctx) ?? null;
+    if (turno !== turnoNavegacion) { limpiar?.(); return; } // ya se fue a otra sección
+    desmontar = limpiar;
   } catch (e) {
+    if (turno !== turnoNavegacion) return;
     console.error(e);
     pintar(contenedor, html`<div class="vacio"><p>${mensajeError(e)}</p></div>`);
   }

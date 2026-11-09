@@ -16,6 +16,7 @@
     "build": "electron-builder --win",
     "release": "electron-builder --win --publish always",
     "test:mutacion": "node tests/mutacion.mjs",
+    "test:estres": "node --test --test-concurrency=1 \"tests/estres/*.test.js\"",
     "sql:unificar": "node scripts/unificar-sql.mjs",
     "menu:generar": "node scripts/generar-menu.mjs && node scripts/unificar-sql.mjs",
     "build:dir": "electron-builder --win --dir"
