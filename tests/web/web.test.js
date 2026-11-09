@@ -130,7 +130,7 @@ async function abrirCategoria(page, slug) {
     .every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity), { timeout: 5000, polling: 50 }, slug);
 }
 
-async function pedir(page, productos, { nombre = 'Cliente Prueba', direccion = 'Calle 1 # 2-3', pago = 'Nequi' } = {}) {
+async function pedir(page, productos, { nombre = 'Cliente Prueba', direccion = 'Calle 1 # 2-3', pago = 'Transferencia' } = {}) {
   for (const [slug, n] of productos) {
     const cat = await page.$eval(`.dish[data-id="${slug}"]`, (d) => d.closest('.cat').dataset.grupo);
     await abrirCategoria(page, cat);
@@ -212,7 +212,7 @@ describe('pedidos desde la web', () => {
     assert.equal(p.estado, 'nuevo');
     assert.equal(p.total, 18000 * 2 + 7000);
     assert.equal(p.cliente_nombre, 'Cliente Prueba');
-    assert.equal(p.metodo_pago, 'nequi');
+    assert.equal(p.metodo_pago, 'transferencia');
     assert.match(mensaje, new RegExp(`\\*Pedido #${String(p.numero).padStart(4, '0')}\\*`));
     assert.match(mensaje, /2 x La Clásica — \$36\.000/);
     assert.match(mensaje, /\*Subtotal:\* \$43\.000 \+ domicilio/);
@@ -648,9 +648,9 @@ describe('opciones al pedir (bebida del combo, en agua o en leche…)', () => {
 });
 
 describe('forma de pago', () => {
-  test('el cliente solo puede elegir Nequi o Efectivo', async () => {
+  test('el cliente solo puede elegir Transferencia o Efectivo', async () => {
     const { page } = await abrir();
-    assert.deepEqual(await page.$$eval('[name=pago] option', (os) => os.map((o) => o.textContent)), ['Nequi', 'Efectivo']);
+    assert.deepEqual(await page.$$eval('[name=pago] option', (os) => os.map((o) => o.textContent)), ['Transferencia', 'Efectivo']);
     await page.close();
   });
 });

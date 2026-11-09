@@ -103,7 +103,7 @@ describe('prueba por propiedades: 400 pedidos aleatorios', () => {
       const estado = r < 0.72 ? 'entregado' : r < 0.84 ? 'cancelado' : elegir(['nuevo', 'preparando', 'listo']);
       const p = {
         creadoEn, lineas: unicas, estado, domicilio, descuento,
-        canal: elegir(['local', 'whatsapp', 'web']), pago: elegir(['efectivo', 'nequi']),
+        canal: elegir(['local', 'whatsapp', 'web']), pago: elegir(['efectivo', 'transferencia']),
         entrega: elegir(['domicilio', 'recoger', 'en_local']),
       };
       p.total = subtotal + domicilio - descuento;

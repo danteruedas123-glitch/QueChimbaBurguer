@@ -51,7 +51,7 @@ describe('menú real', () => {
 
   test('con las opciones, cada precio de la carta sale exacto', async () => {
     const ctx = { web: (f, a) => base.rpc(f, a, { rol: 'anon' }) };
-    const cliente = { nombre: 'Ana', tipo_entrega: 'recoger', metodo_pago: 'nequi' };
+    const cliente = { nombre: 'Ana', tipo_entrega: 'recoger', metodo_pago: 'transferencia' };
     const casos = [
       ['jugo-lulo', [['En agua']], 8000], ['jugo-lulo', [['En leche']], 10000],
       ['frutos-rojos-con-todo', [['Normal'], ['Águila']], 12000], ['frutos-rojos-con-todo', [['Cargada'], ['Águila']], 13000],

@@ -33,7 +33,7 @@ export async function fallaCon(promesa, esperado) {
 }
 
 export const clienteWeb = (extra = {}) => ({
-  nombre: 'Ana Pérez', tipo_entrega: 'domicilio', direccion: 'Calle 10 # 5-20', metodo_pago: 'nequi', ...extra,
+  nombre: 'Ana Pérez', tipo_entrega: 'domicilio', direccion: 'Calle 10 # 5-20', metodo_pago: 'transferencia', ...extra,
 });
 
 /**

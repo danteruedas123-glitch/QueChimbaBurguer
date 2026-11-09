@@ -42,29 +42,35 @@ export async function montar(contenedor, ctx) {
         <div class="rejilla-productos" data-rejilla></div>
       </section>
       <aside class="ticket" aria-label="Venta actual">
-        <div class="ticket-cabeza"><h2>Venta</h2><button class="btn btn--borde btn--sm" data-limpiar>Limpiar</button></div>
-        <div class="ticket-cuerpo">
-          <div class="lineas-ticket" data-lineas></div>
-          <div class="opciones"><span>Canal</span><div class="segmentado" data-grupo="canal">
+        <div class="ticket-cabeza"><h2>Venta <small data-unidades></small></h2><button class="btn btn--borde btn--sm" data-limpiar>Limpiar</button></div>
+        <!-- 1) La orden: ocupa el espacio libre y se desplaza sola -->
+        <div class="ticket-lineas lineas-ticket" data-lineas></div>
+        <!-- 2) Datos de la venta: compactos y siempre a mano -->
+        <div class="ticket-datos">
+          <div class="dato-fila"><span>Canal</span><div class="segmentado" data-grupo="canal">
             <button type="button" data-valor="local">${icono('mesa')} Local</button>
             <button type="button" data-valor="whatsapp">${icono('wa')} WhatsApp</button></div></div>
-          <div class="opciones"><span>Entrega</span><div class="segmentado" data-grupo="entrega">
+          <div class="dato-fila"><span>Entrega</span><div class="segmentado" data-grupo="entrega">
             <button type="button" data-valor="en_local">En el local</button>
             <button type="button" data-valor="recoger">Recoger</button>
             <button type="button" data-valor="domicilio">Domicilio</button></div></div>
-          <label class="campo"><span>Método de pago</span><select data-pago>
-            ${PAGOS_ACTIVOS.map((v) => html`<option value="${v}" ${v === 'efectivo' ? 'selected' : ''}>${ETIQUETA_PAGO[v]}</option>`)}</select></label>
-          <div class="fila-campos">
-            <label class="campo"><span>Cliente <em>(opcional)</em></span><input data-cliente maxlength="60"></label>
-            <label class="campo"><span>Teléfono <em>(opcional)</em></span><input data-telefono maxlength="20" inputmode="tel"></label>
-          </div>
-          <label class="campo" data-solo-domicilio hidden><span>Dirección</span><input data-direccion maxlength="140"></label>
-          <div class="fila-campos">
-            <label class="campo" data-solo-domicilio hidden><span>Domicilio</span><input data-domicilio inputmode="numeric" placeholder="0"></label>
-            <label class="campo"><span>Descuento</span><input data-descuento inputmode="numeric" placeholder="0"></label>
-          </div>
-          <label class="campo"><span>Notas <em>(opcional)</em></span><input data-notas maxlength="240" placeholder="Ej: sin cebolla"></label>
+          <div class="dato-fila"><span>Pago</span><div class="segmentado" data-grupo="pago">
+            ${PAGOS_ACTIVOS.map((v) => html`<button type="button" data-valor="${v}">${ETIQUETA_PAGO[v]}</button>`)}</div></div>
+          <label class="dato-fila" data-solo-domicilio hidden><span>Domicilio</span><input class="dato-valor" data-domicilio inputmode="numeric" placeholder="$0"></label>
+          <label class="dato-fila"><span>Descuento</span><input class="dato-valor" data-descuento inputmode="numeric" placeholder="$0"></label>
+          <details class="mas-datos" data-mas-datos>
+            <summary>Cliente, dirección y notas <em>(opcional)</em></summary>
+            <div class="mas-datos-cuerpo">
+              <div class="fila-campos">
+                <label class="campo campo--compacto"><span>Cliente</span><input data-cliente maxlength="60"></label>
+                <label class="campo campo--compacto"><span>Teléfono</span><input data-telefono maxlength="20" inputmode="tel"></label>
+              </div>
+              <label class="campo campo--compacto" data-solo-domicilio hidden><span>Dirección</span><input data-direccion maxlength="140"></label>
+              <label class="campo campo--compacto"><span>Notas</span><input data-notas maxlength="240" placeholder="Ej: sin cebolla"></label>
+            </div>
+          </details>
         </div>
+        <!-- 3) Totales y registrar: siempre visibles -->
         <div class="ticket-pie">
           <div class="totales">
             <div><span>Subtotal</span><span class="num" data-subtotal>$0</span></div>
@@ -114,6 +120,8 @@ export async function montar(contenedor, ctx) {
       const p = porId.get(id);
       return { clave, p, cantidad, precio: p.precio + extraDe(p, elegidas, bebidas), detalle: detalleDe(p, elegidas) };
     });
+    const unidades = lineas.reduce((s, l) => s + l.cantidad, 0);
+    $('[data-unidades]', contenedor).textContent = unidades ? `· ${unidades} ${unidades === 1 ? 'producto' : 'productos'}` : '';
     pintar(el.lineas, lineas.length ? html`${lineas.map(({ clave, p, cantidad, precio, detalle }) => html`
       <div class="linea">
         <div><b>${p.nombre}</b>${detalle ? html`<small class="linea-detalle">${detalle}</small>` : ''}<small class="num">${formatearCOP(precio)} c/u</small></div>
@@ -147,6 +155,8 @@ export async function montar(contenedor, ctx) {
       g.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(estado[g.dataset.grupo] === b.dataset.valor)));
     });
     contenedor.querySelectorAll('[data-solo-domicilio]').forEach((x) => { x.hidden = estado.entrega !== 'domicilio'; });
+    // A domicilio hace falta la dirección: se abren los datos del cliente
+    if (estado.entrega === 'domicilio') $('[data-mas-datos]', contenedor).open = true;
   }
 
   /** Ventanita para elegir lo que lleva (bebida del combo, en agua o en leche…). */
@@ -197,6 +207,7 @@ export async function montar(contenedor, ctx) {
   function limpiar() {
     estado.lineas.clear();
     contenedor.querySelectorAll('.ticket input:not([type=checkbox])').forEach((i) => { i.value = ''; });
+    $('[data-mas-datos]', contenedor).open = estado.entrega === 'domicilio';
     pintarTicket();
     pintarRejilla();
   }
@@ -221,7 +232,6 @@ export async function montar(contenedor, ctx) {
     if (e.target.matches('[data-buscar]')) { estado.busqueda = e.target.value; pintarRejilla(); }
     if (e.target.matches('[data-descuento],[data-domicilio]')) pintarTicket();
   });
-  $('[data-pago]', contenedor).addEventListener('change', (e) => { estado.pago = e.target.value; });
   $('[data-entregado]', contenedor).addEventListener('change', (e) => { estado.entregado = e.target.checked; });
   contenedor.addEventListener('error', (e) => { if (e.target.matches?.('[data-foto]')) e.target.src = 'img/logo.webp'; }, true);
 

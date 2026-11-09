@@ -21,7 +21,7 @@ export const ETIQUETA_PAGO = {
   transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro',
 };
 /** Métodos que el negocio recibe hoy (la base de datos rechaza los demás en pedidos nuevos). */
-export const PAGOS_ACTIVOS = ['nequi', 'efectivo'];
+export const PAGOS_ACTIVOS = ['transferencia', 'efectivo'];
 
 export function transicionValida(desde, hacia) {
   if (!ESTADOS.includes(desde) || !ESTADOS.includes(hacia)) return false;

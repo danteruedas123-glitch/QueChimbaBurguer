@@ -39,7 +39,7 @@ begin
       values (
         (array['web','whatsapp','local','local'])[1 + floor(random() * 4)::int]::public.canal_pedido,
         v_ent,
-        (array['efectivo','efectivo','efectivo','nequi','nequi','nequi'])[1 + floor(random() * 6)::int]::public.metodo_pago,
+        (array['efectivo','efectivo','efectivo','transferencia','transferencia','transferencia'])[1 + floor(random() * 6)::int]::public.metodo_pago,
         case when v_ent = 'domicilio' then (array[3000,4000,5000])[1 + floor(random() * 3)::int] else 0 end,
         v_ts,
         nombres[1 + floor(random() * 10)::int],
@@ -124,7 +124,7 @@ export async function registrarDemo(ipcMain, ventana) {
       p_items: [linea(1 + Math.floor(Math.random() * 2)), linea(1)],
       p_cliente: {
         nombre: nombres[Math.floor(Math.random() * nombres.length)], telefono: '304 000 0000',
-        tipo_entrega: 'domicilio', direccion: 'Barrio La Florencia, Calle 5 # 3-20', metodo_pago: 'nequi', notas: 'Sin cebolla',
+        tipo_entrega: 'domicilio', direccion: 'Barrio La Florencia, Calle 5 # 3-20', metodo_pago: 'transferencia', notas: 'Sin cebolla',
       },
     }, { rol: 'anon' });
     avisarCambio();

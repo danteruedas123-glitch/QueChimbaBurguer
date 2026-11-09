@@ -101,7 +101,7 @@ describe('ventas registradas por el encargado', () => {
   });
   test('venta por WhatsApp a domicilio enviada a cocina', async () => {
     const v = await venta([{ slug: 'combo-x4', cantidad: 1 }], {
-      canal: 'whatsapp', tipo_entrega: 'domicilio', metodo_pago: 'nequi', costo_domicilio: 5000, entregado: false,
+      canal: 'whatsapp', tipo_entrega: 'domicilio', metodo_pago: 'transferencia', costo_domicilio: 5000, entregado: false,
     });
     assert.equal(v.estado, 'nuevo');
     assert.equal(v.total, 90000);

@@ -1,5 +1,5 @@
 /**
- * Métodos de pago: el negocio solo recibe Nequi y efectivo.
+ * Métodos de pago: el negocio solo recibe transferencia y efectivo (antes Nequi).
  * Los pedidos viejos con otros métodos se conservan y se pueden seguir gestionando.
  */
 import { test, describe, before, after } from 'node:test';
@@ -17,13 +17,13 @@ const venta = (metodo) => ctx.staff('venta_registrar', {
   p_items: [{ slug: 'clasica', cantidad: 1 }], p_datos: { canal: 'local', tipo_entrega: 'en_local', metodo_pago: metodo },
 });
 
-describe('solo Nequi y efectivo', () => {
-  test('la app ofrece exactamente Nequi y Efectivo', () => {
-    assert.deepEqual(PAGOS_ACTIVOS, ['nequi', 'efectivo']);
+describe('solo transferencia y efectivo', () => {
+  test('la app ofrece exactamente Transferencia y Efectivo', () => {
+    assert.deepEqual(PAGOS_ACTIVOS, ['transferencia', 'efectivo']);
     assert.ok(PAGOS_ACTIVOS.every((m) => ETIQUETA_PAGO[m]));
   });
 
-  for (const metodo of ['nequi', 'efectivo']) {
+  for (const metodo of ['transferencia', 'efectivo']) {
     test(`acepta ${metodo} desde la web y en el local`, async () => {
       await pedirWeb(metodo);
       assert.equal((await ultimo()).metodo_pago, metodo);
@@ -32,7 +32,7 @@ describe('solo Nequi y efectivo', () => {
     });
   }
 
-  for (const metodo of ['daviplata', 'transferencia', 'tarjeta', 'otro']) {
+  for (const metodo of ['nequi', 'daviplata', 'tarjeta', 'otro']) {
     test(`rechaza ${metodo} en pedidos nuevos (web y local)`, async () => {
       await fallaCon(pedirWeb(metodo), 'DATO_INVALIDO');
       await fallaCon(venta(metodo), 'DATO_INVALIDO');
@@ -40,15 +40,15 @@ describe('solo Nequi y efectivo', () => {
   }
 
   test('ni siquiera insertando directo en la tabla se puede usar otro método', async () => {
-    await fallaCon(ctx.admin(`insert into public.pedidos (canal, tipo_entrega, metodo_pago) values ('local', 'en_local', 'daviplata')`), /Nequi o en efectivo/);
+    await fallaCon(ctx.admin(`insert into public.pedidos (canal, tipo_entrega, metodo_pago) values ('local', 'en_local', 'daviplata')`), /transferencia o en efectivo/);
   });
 
-  test('un pedido no se puede cambiar a otro método, pero sí entre Nequi y efectivo', async () => {
+  test('un pedido no se puede cambiar a otro método, pero sí entre transferencia y efectivo', async () => {
     await pedirWeb('efectivo'); // queda abierto (los del local se registran ya entregados)
     const { id } = await ultimo();
-    await fallaCon(ctx.staff('pedido_actualizar_cobro', { p_id: id, p: { metodo_pago: 'transferencia' } }), 'DATO_INVALIDO');
-    await ctx.staff('pedido_actualizar_cobro', { p_id: id, p: { metodo_pago: 'nequi' } });
-    assert.equal((await ultimo()).metodo_pago, 'nequi');
+    await fallaCon(ctx.staff('pedido_actualizar_cobro', { p_id: id, p: { metodo_pago: 'nequi' } }), 'DATO_INVALIDO');
+    await ctx.staff('pedido_actualizar_cobro', { p_id: id, p: { metodo_pago: 'transferencia' } });
+    assert.equal((await ultimo()).metodo_pago, 'transferencia');
   });
 
   test('los pedidos viejos con Daviplata se conservan, se pueden gestionar y salen en la contabilidad', async () => {

@@ -194,29 +194,51 @@ svg.i { width: 20px; height: 20px; flex: none; }
 .cerrado.es-cancelado .monto { text-decoration: line-through; }
 
 /* ---------- Nueva venta (caja) ---------- */
-.caja { display: grid; grid-template-columns: 1fr 400px; gap: 20px; height: 100%; min-height: 0; }
+/* minmax(0, 1fr): la columna de productos nunca empuja el panel de venta fuera de la pantalla */
+.caja { display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 29vw, 430px); gap: 18px; height: 100%; min-height: 0; }
 .caja-productos { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .caja-filtros { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .buscador { flex: 1 1 220px; display: flex; align-items: center; gap: 8px; padding: 0 14px; min-height: 42px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--paper); }
 .buscador input { border: 0; outline: 0; background: transparent; width: 100%; }
 .buscador:focus-within { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(255, 183, 3, .35); }
 .caja-filtros, .pestanas { flex: none; }
-.pestanas { display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; }
-.pestanas button { flex: none; min-height: 36px; padding: 0 14px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--paper); font-weight: 600; font-size: 13.5px; }
+.pestanas { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px; }
+.pestanas button { flex: none; min-height: 34px; padding: 0 13px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--paper); font-weight: 600; font-size: 13.5px; }
 .pestanas button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--cream); }
-.rejilla-productos { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 12px; overflow: auto; padding: 2px 2px 12px; }
+.rejilla-productos { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 12px; overflow: auto; padding: 2px 2px 12px; }
 .producto-btn { position: relative; display: grid; grid-template-rows: 96px auto; text-align: left; padding: 0; border: 0; border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: 0 0 0 1px var(--line); transition: transform .15s var(--ease), box-shadow .15s; }
 .producto-btn:hover { transform: translateY(-2px); box-shadow: 0 0 0 1.5px var(--ink), var(--shadow); }
 .producto-btn img { width: 100%; height: 96px; object-fit: cover; background: var(--cream-2); }
-.producto-btn div { padding: 8px 10px 10px; display: grid; gap: 2px; }
+.producto-btn div { padding: 8px 10px 10px; display: grid; gap: 2px; align-content: space-between; }
 .producto-btn b { font-size: 13.5px; line-height: 1.25; }
 .producto-btn span { font-weight: 800; font-family: var(--display); font-size: 17px; }
 .producto-btn .cantidad { position: absolute; top: 8px; right: 8px; min-width: 28px; height: 28px; padding: 0 7px; display: grid; place-items: center; border-radius: 999px; background: var(--ketchup); color: #fff; font-weight: 800; font-size: 13px; }
 .producto-btn.agotado::after { content: 'Agotado'; position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--ink); color: var(--cream); font-size: 11px; font-weight: 700; }
 
 .ticket { display: flex; flex-direction: column; min-height: 0; border-radius: 20px; background: var(--paper); box-shadow: 0 0 0 1px var(--line); overflow: hidden; }
-.ticket-cabeza { padding: 16px 18px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.ticket-cabeza { flex: none; padding: 14px 18px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .ticket-cabeza h2 { font-size: 24px; }
+.ticket-cabeza h2 small { font: 600 14px/1 var(--body); color: var(--muted); }
+/* La orden ocupa todo el espacio libre y se desplaza sola; datos y totales quedan fijos */
+.ticket-lineas { flex: 1 1 auto; min-height: 96px; overflow-y: auto; padding: 4px 18px; }
+.ticket-lineas .vacio { padding: 28px 8px; }
+.ticket-datos { flex: none; display: grid; gap: 8px; padding: 10px 18px 12px; border-top: 1px solid var(--line); background: var(--paper); }
+.dato-fila { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 8px; }
+.dato-fila[hidden] { display: none; }
+.dato-valor { width: 140px; min-height: 34px; padding: 4px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--cream); font: inherit; font-variant-numeric: tabular-nums; }
+.dato-fila > span { font-weight: 700; font-size: 13px; color: var(--muted); }
+.dato-fila .segmentado { display: flex; width: 100%; }
+.dato-fila .segmentado button { flex: 1; justify-content: center; min-height: 32px; padding: 0 8px; font-size: 13px; }
+.campo--compacto { gap: 3px; }
+.campo--compacto > span { font-size: 12.5px; }
+.campo--compacto input { min-height: 36px; padding-block: 6px; }
+.mas-datos { border-radius: 12px; background: var(--cream-2); }
+.mas-datos summary { padding: 9px 12px; cursor: pointer; font-weight: 700; font-size: 13.5px; list-style: none; display: flex; align-items: center; gap: 6px; }
+.mas-datos summary::-webkit-details-marker { display: none; }
+.mas-datos summary::before { content: '▸'; transition: transform .15s; }
+.mas-datos[open] summary::before { transform: rotate(90deg); }
+.mas-datos summary em { font-style: normal; font-weight: 500; color: var(--muted); }
+.mas-datos-cuerpo { display: grid; gap: 8px; padding: 0 12px 12px; }
 .ticket-cuerpo { flex: 1; overflow: auto; padding: 12px 18px; display: grid; gap: 14px; align-content: start; }
 .lineas-ticket { display: grid; gap: 2px; }
 .linea { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-2); font-size: 14px; }
@@ -227,7 +249,7 @@ svg.i { width: 20px; height: 20px; flex: none; }
 .paso .i { width: 14px; height: 14px; }
 .paso output { min-width: 20px; text-align: center; font-weight: 700; font-size: 13.5px; }
 .linea-total { min-width: 74px; text-align: right; font-weight: 700; }
-.ticket-pie { padding: 14px 18px 18px; border-top: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
+.ticket-pie { flex: none; padding: 12px 18px 16px; border-top: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
 .totales { display: grid; gap: 4px; font-size: 14px; }
 .totales div { display: flex; justify-content: space-between; }
 .totales .grande { margin-top: 4px; font-size: 15px; font-weight: 700; align-items: baseline; }
@@ -367,9 +389,26 @@ dialog.modal[open] { animation: aparecer .22s var(--ease); }
 /* ---------- Opciones al pedir (bebida del combo, en agua o en leche…) ---------- */
 .item-detalle, .linea-detalle { display: block; margin-top: 2px; color: var(--ketchup, #c42d12); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
 .producto-btn { position: relative; }
-.con-opciones { position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(23, 18, 14, .78); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.con-opciones { position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(23, 18, 14, .72); color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
 .grupo-opciones { margin: 0 0 14px; padding: 0; border: 0; }
 .grupo-opciones legend { margin-bottom: 6px; font-weight: 800; font-size: 15px; }
 .grupo-opciones legend small { font-weight: 600; opacity: .7; }
 .precio-opciones { margin: 6px 0 0; font-size: 15px; }
 .precio-opciones b { font-size: 19px; }
+
+/* Caja en pantallas bajas (1366×768 y similares): fotos más cortas para ver más productos */
+@media (max-height: 820px) {
+  .producto-btn { grid-template-rows: 80px auto; }
+  .producto-btn img { height: 80px; }
+  .producto-btn div { padding: 6px 9px 8px; }
+  .ticket-cabeza { padding-block: 10px 8px; }
+  .ticket-cabeza h2 { font-size: 21px; }
+  .totales .grande strong { font-size: 27px; }
+  .ticket-datos { gap: 6px; padding-block: 8px 10px; }
+  .dato-fila .segmentado { padding: 3px; }
+  .dato-fila .segmentado button { min-height: 28px; }
+  .dato-valor { min-height: 30px; }
+  .mas-datos summary { padding-block: 7px; }
+  .ticket-pie { gap: 6px; padding-block: 10px 12px; }
+  .ticket-pie .btn--lg { min-height: 46px; }
+}
