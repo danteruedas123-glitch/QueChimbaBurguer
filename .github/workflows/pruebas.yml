@@ -38,6 +38,11 @@ jobs:
       - name: Pruebas de mutación (calidad de las pruebas)
         run: npm run test:mutacion
 
+      - name: Pruebas de la página web con la base de datos
+        env:
+          QB_WEB_DIR: ${{ github.workspace }}/web-sitio
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-web.tap "tests/web/*.test.js"
+
       - name: Pruebas end-to-end de la app (modo demo)
         env:
           QB_CAPTURAS: ${{ github.workspace }}/capturas
@@ -52,7 +57,7 @@ jobs:
 
       - name: Anotar pruebas fallidas
         if: failure()
-        run: node tests/anotar-fallos.mjs resultados-bd.tap resultados-e2e.tap resultados-estres.tap
+        run: node tests/anotar-fallos.mjs resultados-bd.tap resultados-web.tap resultados-e2e.tap resultados-estres.tap
 
       - name: Guardar capturas de pantalla
         if: always()
@@ -105,9 +110,17 @@ jobs:
         env:
           QB_EJECUTABLE: /opt/Quechimba Pedidos/quechimba-pedidos
         run: |
-          sudo apt-get install -y ./dist/Quechimba-Pedidos-*-x64.deb
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y ./dist/Quechimba-Pedidos-*-x64.deb > instalar.log 2>&1; then
+            tail -n 25 instalar.log | while IFS= read -r l; do echo "::error title=apt::$l"; done
+            exit 1
+          fi
           ls -l "/opt/Quechimba Pedidos/"
-          xvfb-run -a node --test tests/e2e/escritorio.test.js
+          xvfb-run -a node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-deb.tap tests/e2e/escritorio.test.js
+
+      - name: Anotar pruebas fallidas (Linux)
+        if: failure()
+        run: node tests/anotar-fallos.mjs resultados-deb.tap
 
       - name: Guardar los instaladores para descargarlos
         uses: actions/upload-artifact@v4

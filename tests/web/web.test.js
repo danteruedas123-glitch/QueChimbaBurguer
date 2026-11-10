@@ -18,7 +18,8 @@ import { nuevaBase } from '../helpers/bd.js';
 import { FESTIVIDADES } from '../../src/shared/festividades.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const WEB = process.env.QB_WEB_DIR ?? path.resolve(RAIZ, '..', 'WebQuechimbaburger');
+// path.resolve normaliza las barras (en GitHub Actions llegan mezcladas)
+const WEB = path.resolve(process.env.QB_WEB_DIR ?? path.join(RAIZ, '..', 'WebQuechimbaburger'));
 const NAVEGADOR = process.env.CHROME_PATH ?? [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',

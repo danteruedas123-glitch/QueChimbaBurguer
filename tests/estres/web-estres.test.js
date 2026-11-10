@@ -16,7 +16,8 @@ import { nuevaBase } from '../helpers/bd.js';
 const MENU_REAL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../supabase/seed.sql');
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const WEB = process.env.QB_WEB_DIR ?? path.resolve(RAIZ, '..', 'WebQuechimbaburger');
+// path.resolve normaliza las barras (en GitHub Actions llegan mezcladas)
+const WEB = path.resolve(process.env.QB_WEB_DIR ?? path.join(RAIZ, '..', 'WebQuechimbaburger'));
 const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((r) => existsSync(r));
 const EDGE = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find((r) => existsSync(r));
 const SB_URL = 'https://prueba.supabase.co';
