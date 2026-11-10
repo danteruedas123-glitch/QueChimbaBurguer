@@ -11,14 +11,14 @@ const publicacion = {
   tag_name: 'v1.5.0',
   assets: [
     { name: 'Quechimba-Pedidos-Setup-1.5.0.exe', browser_download_url: `${BASE}Quechimba-Pedidos-Setup-1.5.0.exe` },
-    { name: 'Quechimba-Pedidos-1.5.0-x64.deb', browser_download_url: `${BASE}Quechimba-Pedidos-1.5.0-x64.deb` },
+    { name: 'Quechimba-Pedidos-1.5.0-amd64.deb', browser_download_url: `${BASE}Quechimba-Pedidos-1.5.0-amd64.deb` },
     { name: 'Quechimba-Pedidos-1.5.0-arm64.deb', browser_download_url: `${BASE}Quechimba-Pedidos-1.5.0-arm64.deb` },
   ],
 };
 
 describe('actualizaciones en Chromebook', () => {
   test('ofrece el instalador correcto según el procesador (Intel/AMD o ARM)', () => {
-    assert.deepEqual(revisarPublicacion(publicacion, '1.4.0', 'x64'), { estado: 'disponible', nueva: '1.5.0', url: `${BASE}Quechimba-Pedidos-1.5.0-x64.deb` });
+    assert.deepEqual(revisarPublicacion(publicacion, '1.4.0', 'x64'), { estado: 'disponible', nueva: '1.5.0', url: `${BASE}Quechimba-Pedidos-1.5.0-amd64.deb` });
     assert.deepEqual(revisarPublicacion(publicacion, '1.4.0', 'arm64'), { estado: 'disponible', nueva: '1.5.0', url: `${BASE}Quechimba-Pedidos-1.5.0-arm64.deb` });
   });
 
@@ -29,7 +29,7 @@ describe('actualizaciones en Chromebook', () => {
   });
 
   test('nunca abre una descarga que no sea de GitHub, aunque la respuesta venga alterada', () => {
-    const trampa = { tag_name: 'v9.9.9', assets: [{ name: 'Quechimba-Pedidos-9.9.9-x64.deb', browser_download_url: 'https://sitio-malo.com/Quechimba-Pedidos-9.9.9-x64.deb' }] };
+    const trampa = { tag_name: 'v9.9.9', assets: [{ name: 'Quechimba-Pedidos-9.9.9-amd64.deb', browser_download_url: 'https://sitio-malo.com/Quechimba-Pedidos-9.9.9-amd64.deb' }] };
     assert.deepEqual(revisarPublicacion(trampa, '1.4.0', 'x64'), { estado: 'al-dia' });
     for (const raro of [null, {}, { tag_name: 'ultima' }, { tag_name: 5 }]) {
       assert.equal(revisarPublicacion(raro, '1.4.0', 'x64').estado, 'error');

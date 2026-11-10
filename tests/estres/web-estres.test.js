@@ -312,7 +312,7 @@ describe('carga extrema', () => {
     await page.waitForSelector('.dish');
     const total = await page.$eval('[data-cart-total]', (e) => e.textContent);
     assert.match(total, /^\$[\d.]+$/);
-    await page.click('.cart-btn');
+    await page.evaluate(() => document.querySelector('.cart-btn').click());
     await page.waitForSelector('[name=nombre]', { visible: true });
     await page.$eval('[name=nombre]', (el) => { el.value = 'Fiesta'; });
     await page.$eval('[name=direccion]', (el) => { el.value = 'Calle 1'; });

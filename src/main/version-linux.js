@@ -2,7 +2,7 @@
  * Actualizaciones en Linux (Chromebook): el sistema no permite que la app se
  * reinstale sola, así que se revisa la última versión publicada en GitHub y,
  * si hay una nueva, se ofrece descargar el instalador .deb correcto para el
- * procesador del equipo (Intel/AMD = x64, ARM = arm64).
+ * procesador del equipo (Intel/AMD = amd64, ARM = arm64; así los nombra Linux).
  * Sin dependencias de Electron para poder probarlo con node:test.
  */
 import { compararVersiones } from '../shared/utilidades.js';
@@ -17,7 +17,7 @@ export function revisarPublicacion(publicacion, versionActual, arquitectura) {
   const nueva = String(publicacion?.tag_name ?? '').replace(/^v/, '');
   if (!/^\d+\.\d+\.\d+$/.test(nueva)) return { estado: 'error', mensaje: 'Respuesta inesperada de GitHub' };
   if (compararVersiones(nueva, versionActual) <= 0) return { estado: 'al-dia' };
-  const sufijo = `-${arquitectura === 'arm64' ? 'arm64' : 'x64'}.deb`;
+  const sufijo = `-${arquitectura === 'arm64' ? 'arm64' : 'amd64'}.deb`;
   const archivo = (publicacion.assets ?? []).find((a) => typeof a?.name === 'string' && a.name.endsWith(sufijo));
   const url = archivo?.browser_download_url;
   // Solo se abren descargas de GitHub (nunca una dirección arbitraria)

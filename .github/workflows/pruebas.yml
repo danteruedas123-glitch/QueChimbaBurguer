@@ -111,7 +111,9 @@ jobs:
           QB_EJECUTABLE: /opt/Quechimba Pedidos/quechimba-pedidos
         run: |
           sudo apt-get update -qq
-          if ! sudo apt-get install -y ./dist/Quechimba-Pedidos-*-x64.deb > instalar.log 2>&1; then
+          ls -l dist/*.deb
+          DEB=$(ls dist/Quechimba-Pedidos-*-amd64.deb)
+          if ! sudo apt-get install -y "./$DEB" > instalar.log 2>&1; then
             tail -n 25 instalar.log | while IFS= read -r l; do echo "::error title=apt::$l"; done
             exit 1
           fi
