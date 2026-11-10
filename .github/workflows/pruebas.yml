@@ -61,3 +61,56 @@ jobs:
           name: capturas-e2e
           path: capturas/
           if-no-files-found: ignore
+
+  # La misma app en Linux (Chromebook): todas las pruebas funcionales y de punta a punta
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar la web (rama web) para verificar que el menú y las fotos coinciden
+        uses: actions/checkout@v4
+        with:
+          ref: web
+          path: web-sitio
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Descargar Electron (npm no siempre lo descarga solo)
+        run: node node_modules/electron/install.js
+
+      # Ubuntu 24.04 bloquea el aislamiento (sandbox) de Chromium por defecto;
+      # se habilita para probar la app CON su sandbox, igual que en el Chromebook
+      - name: Permitir el sandbox de Chromium
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Pruebas unitarias, de base de datos y seguridad (Linux)
+        env:
+          QB_WEB_DIR: ${{ github.workspace }}/web-sitio
+        run: npm test
+
+      - name: Pruebas end-to-end de la app en Linux (modo demo)
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Compilar los instaladores .deb (sin publicar)
+        run: npx electron-builder --linux deb --x64 --arm64 --publish never
+
+      - name: Instalar el .deb como en el Chromebook y probar el programa YA INSTALADO
+        env:
+          QB_EJECUTABLE: /opt/Quechimba Pedidos/quechimba-pedidos
+        run: |
+          sudo apt-get install -y ./dist/Quechimba-Pedidos-*-x64.deb
+          ls -l "/opt/Quechimba Pedidos/"
+          xvfb-run -a node --test tests/e2e/escritorio.test.js
+
+      - name: Guardar los instaladores para descargarlos
+        uses: actions/upload-artifact@v4
+        with:
+          name: instaladores-chromebook
+          path: dist/*.deb

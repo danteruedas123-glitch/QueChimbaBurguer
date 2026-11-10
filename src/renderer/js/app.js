@@ -270,6 +270,12 @@ function configurarActualizaciones() {
       pintar(aviso, html`<span><b>Versión ${e.nueva} lista.</b> Se instalará al cerrar la app.</span>
         <button class="btn btn--primario btn--sm" data-instalar>Reiniciar y actualizar</button>`);
       $('[data-instalar]', aviso).addEventListener('click', () => window.qb.actualizador.instalar());
+    } else if (e.estado === 'disponible') {
+      // Linux (Chromebook): la app no se reinstala sola; se descarga el instalador
+      aviso.hidden = false;
+      pintar(aviso, html`<span><b>Versión ${e.nueva} disponible.</b> Descárgala y ábrela para instalarla.</span>
+        <button class="btn btn--primario btn--sm" data-instalar>Descargar</button>`);
+      $('[data-instalar]', aviso).addEventListener('click', () => window.qb.actualizador.instalar());
     } else if (e.estado === 'descargando') {
       aviso.hidden = false;
       pintar(aviso, html`<span>Descargando versión ${e.nueva ?? ''}… ${e.progreso ?? 0}%</span>`);

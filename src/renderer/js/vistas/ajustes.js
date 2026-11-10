@@ -48,7 +48,9 @@ export async function montar(contenedor, ctx) {
 
       <section class="tarjeta"><div class="tarjeta-cuerpo ajuste">
         <h3>Actualizaciones</h3>
-        <p>Versión instalada: <b>${actualizacion.version}</b>. Las actualizaciones se descargan solas y se instalan al cerrar la app.</p>
+        <p>Versión instalada: <b>${actualizacion.version}</b>. ${actualizacion.plataforma === 'linux'
+          ? 'La app revisa sola si hay versión nueva y te avisa para descargarla.'
+          : 'Las actualizaciones se descargan solas y se instalan al cerrar la app.'}</p>
         <p data-update-estado>${textoActualizacion(actualizacion)}</p>
         <button class="btn btn--borde" data-buscar-update style="justify-self:start">Buscar actualizaciones</button>
       </div></section>
@@ -248,6 +250,7 @@ function textoActualizacion(e) {
     'al-dia': 'Tienes la versión más reciente.',
     descargando: `Descargando la versión ${e.nueva ?? ''}… ${e.progreso ?? 0}%`,
     lista: `La versión ${e.nueva} está lista: se instalará al cerrar la app.`,
+    disponible: `Hay una versión nueva (${e.nueva}): toca "Descargar" arriba y abre el archivo para instalarla.`,
     error: `No se pudo buscar: ${e.mensaje ?? 'sin conexión'}`,
   }[e.estado] ?? '';
 }

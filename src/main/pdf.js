@@ -4,6 +4,7 @@
  */
 import { BrowserWindow, dialog, app } from 'electron';
 import { writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +38,8 @@ export async function generarPDF(ventanaPadre, datos, origen) {
     if (!destino) {
       const r = await dialog.showSaveDialog(ventanaPadre, {
         title: 'Guardar reporte de contabilidad',
-        defaultPath: path.join(app.getPath('documents'), nombre),
+        // En Chromebook (Linux) la carpeta Documentos puede no existir: se usa la carpeta personal
+        defaultPath: path.join(existsSync(app.getPath('documents')) ? app.getPath('documents') : app.getPath('home'), nombre),
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       });
       if (r.canceled || !r.filePath) return { cancelado: true };

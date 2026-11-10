@@ -3,6 +3,8 @@
 # 1) Corre TODAS las pruebas (si algo falla, no se publica nada).
 # 2) Compila el instalador de Windows.
 # 3) Lo sube a GitHub Releases → las apps instaladas se actualizan solas.
+# 4) Repite las pruebas en Linux y compila los instaladores .deb para
+#    Chromebook (Intel/AMD = x64 y ARM = arm64) en la misma publicación.
 name: Publicar versión
 
 on:
@@ -55,5 +57,46 @@ jobs:
 
       - name: Compilar y publicar instalador
         run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux:
+    needs: publicar   # solo si Windows pasó todo y la publicación ya existe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar la web (rama web) para verificar que el menú y las fotos coinciden
+        uses: actions/checkout@v4
+        with:
+          ref: web
+          path: web-sitio
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Descargar Electron (npm no siempre lo descarga solo)
+        run: node node_modules/electron/install.js
+
+      # Ubuntu 24.04 bloquea el aislamiento (sandbox) de Chromium por defecto;
+      # se habilita para probar la app CON su sandbox, igual que en el Chromebook
+      - name: Permitir el sandbox de Chromium
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Pruebas unitarias, de base de datos y seguridad (Linux)
+        env:
+          QB_WEB_DIR: ${{ github.workspace }}/web-sitio
+        run: npm test
+
+      - name: Pruebas end-to-end de la app en Linux (modo demo)
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Compilar y publicar instaladores para Chromebook (.deb x64 y arm64)
+        run: npm run release:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
