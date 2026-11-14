@@ -316,7 +316,12 @@ describe('carga extrema', () => {
     await page.waitForSelector('[name=nombre]', { visible: true });
     await page.$eval('[name=nombre]', (el) => { el.value = 'Fiesta'; });
     await page.$eval('[name=direccion]', (el) => { el.value = 'Calle 1'; });
-    await page.click('[data-enviar]');
+    // Con 45 líneas el panel tarda en deslizarse: se espera a que termine (como haría una persona)
+    await page.waitForFunction(() => {
+      const d = document.querySelector('[data-drawer]');
+      return d.open && d.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
+    }, { timeout: 10000, polling: 50 });
+    await page.evaluate(() => document.querySelector('[data-enviar]').click());
     await new Promise((r) => setTimeout(r, 2500));
     const toast = await page.$eval('[data-toast]', (e) => e.textContent);
     console.log(`    respuesta a 45 platos × 99: "${toast.trim()}"`);
