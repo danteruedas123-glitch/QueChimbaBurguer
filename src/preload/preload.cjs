@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('qb', {
     alCambiarPedidos: escuchar('demo:cambio-pedidos'),
   },
   pdf: { reporte: (datos) => ipcRenderer.invoke('pdf:reporte', datos) },
+  comanda: { imprimir: (datos) => ipcRenderer.invoke('comanda:imprimir', datos) },
   abrirExterno: (url) => ipcRenderer.invoke('app:abrir-externo', url),
   notificar: (titulo, cuerpo) => ipcRenderer.invoke('app:notificar', { titulo, cuerpo }),
   recargar: () => ipcRenderer.invoke('app:recargar'),

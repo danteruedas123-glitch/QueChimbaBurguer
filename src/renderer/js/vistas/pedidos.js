@@ -81,6 +81,7 @@ export async function montar(contenedor, ctx) {
         case 'cobro': await editarCobro(ctx, pedido); break;
         case 'cancelar': await cancelar(ctx, pedido); break;
         case 'whatsapp': abrirWhatsApp(pedido); break;
+        case 'imprimir': await imprimir(b, pedido); break;
         default: return;
       }
     } catch (err) {
@@ -112,9 +113,10 @@ function tablero() {
         <div class="cerrados-resumen"><span>Vendido hoy</span><strong class="num" data-vendido-hoy>${formatearCOP(vendidoHoy)}</strong></div>
         ${cerrados.length ? cerrados.map((p) => html`
           <div class="cerrado ${p.estado === 'cancelado' ? 'es-cancelado' : ''}">
-            <b>${numeroPedido(p.numero)}</b>
-            <span>${horaLocal(p.creado_en)} · ${ETIQUETA_CANAL[p.canal]}${p.estado === 'cancelado' ? ' · Cancelado' : ''}</span>
+            <div class="cerrado-info"><b>${numeroPedido(p.numero)}</b>
+              <span>${horaLocal(p.creado_en)} · ${ETIQUETA_CANAL[p.canal]}${p.estado === 'cancelado' ? ' · Cancelado' : ''}</span></div>
             <span class="monto num">${formatearCOP(p.total)}</span>
+            <button class="btn-icono" data-accion="imprimir" data-id="${p.id}" title="Imprimir comanda" aria-label="Imprimir comanda del pedido ${numeroPedido(p.numero)}">${icono('imprimir')}</button>
             ${p.estado === 'entregado' ? html`<button class="btn-icono btn-icono--peligro" data-accion="cancelar" data-id="${p.id}" title="Anular venta" aria-label="Anular venta ${numeroPedido(p.numero)}">${icono('x')}</button>` : ''}
           </div>`) : html`<p class="columna-vacia">Aún no hay ventas cerradas hoy.</p>`}
       </section>
@@ -143,6 +145,7 @@ function tarjetaPedido(p) {
         <div class="pedido-total num">${formatearCOP(p.total)}
           <small>${ETIQUETA_PAGO[p.metodo_pago]}${p.costo_domicilio ? ` · domicilio ${formatearCOP(p.costo_domicilio)}` : p.tipo_entrega === 'domicilio' ? ' · falta domicilio' : ''}</small>
         </div>
+        <button class="btn-icono" data-accion="imprimir" data-id="${p.id}" title="Imprimir comanda" aria-label="Imprimir comanda del pedido ${numeroPedido(p.numero)}">${icono('imprimir')}</button>
         ${p.cliente_telefono ? html`<button class="btn-icono" data-accion="whatsapp" data-id="${p.id}" title="Escribir al cliente" aria-label="Escribir por WhatsApp a ${p.cliente_nombre}">${icono('wa')}</button>` : ''}
         <button class="btn-icono" data-accion="cobro" data-id="${p.id}" title="Domicilio, descuento y pago" aria-label="Editar cobro del pedido ${numeroPedido(p.numero)}">${icono('editar')}</button>
         <button class="btn-icono btn-icono--peligro" data-accion="cancelar" data-id="${p.id}" title="Cancelar pedido" aria-label="Cancelar pedido ${numeroPedido(p.numero)}">${icono('x')}</button>
@@ -152,6 +155,20 @@ function tarjetaPedido(p) {
 }
 
 // ---------- Acciones ----------
+/** Ancho del papel de la impresora de tickets de ESTE computador (Ajustes). */
+export const anchoComanda = () => (localStorage.getItem('qb-comanda-ancho') === '58' ? 58 : 80);
+
+async function imprimir(boton, p) {
+  boton.disabled = true;
+  try {
+    const r = await window.qb.comanda.imprimir({ pedido: p, ancho: anchoComanda() });
+    if (r?.ok) avisar(html`Comanda ${numeroPedido(p.numero)} enviada a imprimir`);
+    else if (r?.error) avisar(r.error, 'error', 6000);
+  } finally {
+    boton.disabled = false;
+  }
+}
+
 async function avanzar(ctx, p) {
   const sig = siguienteEstado(p.estado);
   // Antes de entregar un domicilio sin tarifa, confirmar el cobro para que la contabilidad sea exacta

@@ -21,6 +21,13 @@ export async function montar(contenedor, ctx) {
           <p>Sonido cuando llega un pedido nuevo.</p>
           <label class="interruptor"><input type="checkbox" data-sonido ${sonido ? 'checked' : ''} aria-label="Sonido de pedidos"> Sonido</label>
         </div>
+        <div class="ajuste-fila">
+          <p>Papel de la impresora de comandas de este computador.</p>
+          <div class="segmentado" data-comanda-ancho>
+            <button type="button" data-valor="80" aria-pressed="${localStorage.getItem('qb-comanda-ancho') !== '58'}">80 mm</button>
+            <button type="button" data-valor="58" aria-pressed="${localStorage.getItem('qb-comanda-ancho') === '58'}">58 mm</button>
+          </div>
+        </div>
       </div></section>
 
       <section class="tarjeta tarjeta--ancha" data-festividades></section>
@@ -209,6 +216,13 @@ export async function montar(contenedor, ctx) {
       ctx.estadoWeb(webActiva);
     }
     pintarEstadoWeb();
+  });
+  $('[data-comanda-ancho]', contenedor).addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-valor]');
+    if (!b) return;
+    localStorage.setItem('qb-comanda-ancho', b.dataset.valor);
+    e.currentTarget.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    avisar(`Comandas en papel de ${b.dataset.valor} mm`);
   });
   $('[data-sonido]', contenedor).addEventListener('change', (e) => {
     localStorage.setItem('qb-sonido', e.target.checked ? 'on' : 'off');

@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { leerConfig, guardarConfig, validarConexion } from './config.js';
 import { registrarDemo } from './demo.js';
 import { generarPDF } from './pdf.js';
+import { imprimirComanda } from './comanda.js';
 import { iniciarActualizador } from './actualizador.js';
 import { rutaSupabaseUMD } from './rutas.js';
 
@@ -125,6 +126,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('app:recargar', () => ventana?.webContents.reload());
     ipcMain.handle('pdf:reporte', (_e, datos) => generarPDF(ventana, datos, ORIGEN));
+    ipcMain.handle('comanda:imprimir', (_e, datos) => imprimirComanda(datos, ORIGEN));
 
     if (MODO_DEMO) await registrarDemo(ipcMain, () => ventana);
 

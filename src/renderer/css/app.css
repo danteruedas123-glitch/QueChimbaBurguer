@@ -160,7 +160,7 @@ svg.i { width: 20px; height: 20px; flex: none; }
 .pasos-conexion { padding-left: 20px; list-style: decimal; display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
 
 /* ---------- Pedidos (tablero) ---------- */
-.tablero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(260px, .9fr); gap: 16px; align-items: start; }
+.tablero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .9fr); gap: 16px; align-items: start; }
 .columna { display: grid; gap: 12px; align-content: start; min-height: 200px; padding: 12px; border-radius: 20px; background: var(--cream-2); }
 .columna-cabeza { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 2px; }
 .columna-cabeza h2 { font-size: 21px; }
@@ -187,9 +187,13 @@ svg.i { width: 20px; height: 20px; flex: none; }
 .pedido-total small { display: block; margin-top: 3px; font: 500 12px var(--body); color: var(--muted); }
 .cerrados-resumen { display: grid; gap: 2px; padding: 4px 6px 8px; }
 .cerrados-resumen strong { font: 800 30px/1 var(--display); font-stretch: 80%; }
-.cerrado { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; background: var(--paper); font-size: 13.5px; box-shadow: 0 0 0 1px var(--line-2); }
+.cerrado { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 8px 8px 10px; border-radius: 12px; background: var(--paper); font-size: 13px; box-shadow: 0 0 0 1px var(--line-2); }
+.cerrado-info { flex: 1 1 auto; min-width: 0; display: grid; line-height: 1.2; }
+.cerrado-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.cerrado .btn-icono { flex: none; width: 30px; height: 30px; }
+.cerrado .btn-icono .i { width: 15px; height: 15px; }
 .cerrado b { font-family: var(--display); font-size: 17px; }
-.cerrado .monto { margin-left: auto; font-weight: 700; }
+.cerrado .monto { flex: none; margin-left: auto; font-weight: 700; }
 .cerrado.es-cancelado { opacity: .62; }
 .cerrado.es-cancelado .monto { text-decoration: line-through; }
 

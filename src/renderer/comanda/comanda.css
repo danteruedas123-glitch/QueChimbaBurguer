@@ -1,0 +1,31 @@
+/* Comanda para impresora de tickets (térmica de 80 mm o 58 mm).
+   Solo negro, letra grande y sin fondos: se lee bien en cocina y gasta poco papel. */
+@page { margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+body { font: 13px/1.3 Arial, Helvetica, sans-serif; }
+#comanda { width: var(--ancho, 72mm); padding: 3mm 2mm 6mm; }
+.ancho-58 #comanda { --ancho: 48mm; font-size: 11.5px; }
+
+.centro { text-align: center; }
+.negocio { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.numero { margin: 2mm 0 1mm; font-size: 26px; font-weight: 900; line-height: 1; }
+.ancho-58 .numero { font-size: 22px; }
+.etiqueta { display: inline-block; margin-bottom: 1mm; padding: .5mm 2mm; border: 1.5px solid #000; font-weight: 700; text-transform: uppercase; }
+.linea { border: 0; border-top: 1.5px dashed #000; margin: 2mm 0; }
+.dato { margin: .6mm 0; }
+.dato b { font-weight: 700; }
+
+.items { width: 100%; border-collapse: collapse; }
+.items td { padding: 1mm 0; vertical-align: top; }
+.items .cant { width: 9mm; font-size: 15px; font-weight: 900; }
+.items .nombre { font-size: 14px; font-weight: 700; }
+.items .detalle { display: block; font-size: 12px; font-weight: 400; }
+.items .valor { text-align: right; white-space: nowrap; padding-left: 2mm; }
+
+.notas { margin: 2mm 0; padding: 1.5mm; border: 1.5px solid #000; font-size: 14px; font-weight: 700; }
+.totales { width: 100%; border-collapse: collapse; }
+.totales td { padding: .4mm 0; }
+.totales td:last-child { text-align: right; }
+.totales .grande td { padding-top: 1mm; font-size: 17px; font-weight: 900; }
+.pie { margin-top: 3mm; font-size: 11px; }

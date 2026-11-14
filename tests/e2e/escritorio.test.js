@@ -114,7 +114,7 @@ test('la interfaz no tiene acceso a Node.js ni al sistema', async () => {
     puente: Object.keys(window.qb).sort(),
   }));
   assert.deepEqual([r.require, r.process, r.module], ['undefined', 'undefined', 'undefined']);
-  assert.deepEqual(r.puente, ['abrirExterno', 'actualizador', 'config', 'demo', 'notificar', 'pdf', 'recargar']);
+  assert.deepEqual(r.puente, ['abrirExterno', 'actualizador', 'comanda', 'config', 'demo', 'notificar', 'pdf', 'recargar']);
 });
 
 test('la librería de Supabase carga en la interfaz (necesaria fuera del modo demo)', async () => {
@@ -182,6 +182,56 @@ test('cancelar un pedido lo saca del tablero y no cuenta como venta', async () =
   await page.waitForFunction((s) => !document.querySelector(s), { timeout: 10000, polling: 100 }, sel);
   const [p] = (await rpc('pedidos_listar', { p_desde: hoyEn(), p_hasta: hoyEn() })).datos.filter((x) => x.numero === nuevo.numero);
   assert.equal(p.estado, 'cancelado');
+});
+
+// ---------------------------------------------------------------- comanda
+test('cada pedido web tiene botón para imprimir su comanda (con lo que eligió el cliente)', async () => {
+  const { datos: nuevo } = await page.evaluate(() => window.qb.demo.simularPedidoWeb());
+  const sel = `[data-pedido="${nuevo.numero}"]`;
+  await page.waitForSelector(`${sel} [data-accion="imprimir"]`);
+  await page.click(`${sel} [data-accion="imprimir"]`);
+  const nombre = `Comanda_${nuevo.numero}.pdf`;
+  let ok = false;
+  for (let i = 0; i < 60 && !ok; i++) { ok = (await readdir(dirPDF)).includes(nombre); if (!ok) await espera(250); }
+  assert.ok(ok, 'se debe generar la comanda');
+  const pdf = await readFile(path.join(dirPDF, nombre));
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  await page.waitForFunction(() => /enviada a imprimir/.test(document.body.textContent), { timeout: 5000, polling: 100 });
+});
+
+test('la comanda trae número, cliente, productos, opciones, notas y total; y no ejecuta código', async () => {
+  // La comanda se abre en un marco dentro de la app (mismo origen, misma política de seguridad)
+  try {
+    await page.evaluate(() => new Promise((ok) => {
+      const f = document.createElement('iframe');
+      f.id = 'prueba-comanda'; f.src = 'comanda/comanda.html'; f.style.cssText = 'position:fixed;left:-9999px;width:300px;height:900px';
+      f.onload = ok; document.body.append(f);
+    }));
+    await page.waitForFunction(() => typeof document.getElementById('prueba-comanda').contentWindow.pintarComanda === 'function', { timeout: 10000 });
+    const r = await page.evaluate(() => {
+      const w = document.getElementById('prueba-comanda').contentWindow;
+      w.pintarComanda({ ancho: 80, pedido: {
+        numero: 142, canal: 'web', tipo_entrega: 'domicilio', metodo_pago: 'transferencia', creado_en: '2026-11-13T23:30:00Z',
+        cliente_nombre: '<img src=x onerror="window.__xss=1">Ana', cliente_telefono: '304 000 0000', direccion: 'Calle 5 # 3-20',
+        notas: 'Sin cebolla', subtotal: 45000, costo_domicilio: 4000, descuento: 0, total: 49000,
+        items: [{ nombre: 'Combo Melo', detalle: 'Gaseosas: Coca-Cola, Pepsi', cantidad: 1, subtotal: 45000 }],
+      } });
+      return { texto: w.document.body.innerText, xss: (w.__xss ?? 0) + (window.__xss ?? 0), imgs: w.document.querySelectorAll('img').length };
+    });
+    for (const parte of ['#0142', 'Web', 'Domicilio', 'Calle 5 # 3-20', '304 000 0000', 'Combo Melo', 'Gaseosas: Coca-Cola, Pepsi', 'Sin cebolla', '$49.000', 'Transferencia']) {
+      assert.ok(r.texto.toLowerCase().includes(parte.toLowerCase()), `falta "${parte}" en la comanda`);
+    }
+    assert.deepEqual([r.xss, r.imgs], [0, 0], 'el código malicioso se imprime como texto');
+  } finally {
+    await page.evaluate(() => document.getElementById('prueba-comanda')?.remove());
+  }
+});
+
+test('la comanda rechaza datos que no son un pedido', async () => {
+  for (const malo of [null, {}, { pedido: { numero: 'x', items: [] } }, { pedido: { numero: 1, items: [] } }]) {
+    const r = await page.evaluate((d) => window.qb.comanda.imprimir(d), malo);
+    assert.ok(r?.error, JSON.stringify(malo));
+  }
 });
 
 // ---------------------------------------------------------------- venta manual y contabilidad
@@ -265,7 +315,7 @@ test('descarga el PDF de contabilidad (archivo válido, con varias páginas si h
   const t0 = Date.now();
   await page.click('[data-pdf]');
   let archivos = [];
-  for (let i = 0; i < 60 && !archivos.length; i++) { archivos = (await readdir(dirPDF)).filter((f) => f.endsWith('.pdf')); if (!archivos.length) await espera(250); }
+  for (let i = 0; i < 60 && !archivos.length; i++) { archivos = (await readdir(dirPDF)).filter((f) => f.startsWith('Contabilidad_')); if (!archivos.length) await espera(250); }
   assert.equal(archivos.length, 1, 'se debe generar un PDF');
   const pdf = await readFile(path.join(dirPDF, archivos[0]));
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
