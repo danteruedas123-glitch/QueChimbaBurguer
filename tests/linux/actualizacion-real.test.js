@@ -2,7 +2,7 @@
  * Prueba REAL de la actualización en Linux (solo en GitHub Actions, Ubuntu):
  * igual que en el Chromebook, descarga de GitHub la última versión publicada,
  * verifica su huella e instala con `sudo -n apt-get` (sin contraseña).
- *   QB_PRUEBA_ACTUALIZACION=1 node --test tests/linux/
+ *   QB_PRUEBA_ACTUALIZACION=1 node --test "tests/linux/*.test.js"
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

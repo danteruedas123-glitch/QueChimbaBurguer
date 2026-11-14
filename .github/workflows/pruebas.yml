@@ -123,7 +123,7 @@ jobs:
       - name: Actualización automática real (descarga, verifica e instala como en el Chromebook)
         env:
           QB_PRUEBA_ACTUALIZACION: '1'
-        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-actualizacion.tap tests/linux/
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-actualizacion.tap "tests/linux/*.test.js"
 
       - name: Anotar pruebas fallidas (Linux)
         if: failure()
