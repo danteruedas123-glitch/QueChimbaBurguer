@@ -390,6 +390,9 @@ dialog.modal[open] { animation: aparecer .22s var(--ease); }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Comandos de actualización (Linux) */
+.comandos { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, .25); font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; user-select: all; }
+
 /* ---------- Opciones al pedir (bebida del combo, en agua o en leche…) ---------- */
 .item-detalle, .linea-detalle { display: block; margin-top: 2px; color: var(--ketchup, #c42d12); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
 .producto-btn { position: relative; }

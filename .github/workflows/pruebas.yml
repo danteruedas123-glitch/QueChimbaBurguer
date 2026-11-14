@@ -120,9 +120,14 @@ jobs:
           ls -l "/opt/Quechimba Pedidos/"
           xvfb-run -a node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-deb.tap tests/e2e/escritorio.test.js
 
+      - name: Actualización automática real (descarga, verifica e instala como en el Chromebook)
+        env:
+          QB_PRUEBA_ACTUALIZACION: '1'
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=resultados-actualizacion.tap tests/linux/
+
       - name: Anotar pruebas fallidas (Linux)
         if: failure()
-        run: node tests/anotar-fallos.mjs resultados-deb.tap
+        run: node tests/anotar-fallos.mjs resultados-deb.tap resultados-actualizacion.tap
 
       - name: Guardar los instaladores para descargarlos
         uses: actions/upload-artifact@v4

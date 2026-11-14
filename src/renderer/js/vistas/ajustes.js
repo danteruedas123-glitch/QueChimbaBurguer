@@ -264,7 +264,9 @@ function textoActualizacion(e) {
     'al-dia': 'Tienes la versión más reciente.',
     descargando: `Descargando la versión ${e.nueva ?? ''}… ${e.progreso ?? 0}%`,
     lista: `La versión ${e.nueva} está lista: se instalará al cerrar la app.`,
-    disponible: `Hay una versión nueva (${e.nueva}): toca "Descargar" arriba y abre el archivo para instalarla.`,
+    disponible: `Hay una versión nueva (${e.nueva}): toca "Actualizar ahora" en el aviso de arriba.`,
+    instalando: `Instalando la versión ${e.nueva}… la app se volverá a abrir sola.`,
+    manual: `Hay una versión nueva (${e.nueva}): copia los comandos del aviso de arriba en la Terminal.`,
     error: `No se pudo buscar: ${e.mensaje ?? 'sin conexión'}`,
   }[e.estado] ?? '';
 }

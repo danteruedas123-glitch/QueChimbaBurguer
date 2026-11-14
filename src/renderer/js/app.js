@@ -271,11 +271,26 @@ function configurarActualizaciones() {
         <button class="btn btn--primario btn--sm" data-instalar>Reiniciar y actualizar</button>`);
       $('[data-instalar]', aviso).addEventListener('click', () => window.qb.actualizador.instalar());
     } else if (e.estado === 'disponible') {
-      // Linux (Chromebook): la app no se reinstala sola; se descarga el instalador
+      // Linux (Chromebook): se instala con un toque y la app se vuelve a abrir sola
       aviso.hidden = false;
-      pintar(aviso, html`<span><b>Versión ${e.nueva} disponible.</b> Descárgala y ábrela para instalarla.</span>
-        <button class="btn btn--primario btn--sm" data-instalar>Descargar</button>`);
-      $('[data-instalar]', aviso).addEventListener('click', () => window.qb.actualizador.instalar());
+      pintar(aviso, html`<span><b>Versión ${e.nueva} disponible.</b> Tarda 1 o 2 minutos y la app se vuelve a abrir sola.</span>
+        <button class="btn btn--primario btn--sm" data-instalar>Actualizar ahora</button>`);
+      $('[data-instalar]', aviso).addEventListener('click', (ev) => { ev.currentTarget.disabled = true; window.qb.actualizador.instalar(); });
+    } else if (e.estado === 'instalando') {
+      aviso.hidden = false;
+      pintar(aviso, html`<span><b>Instalando la versión ${e.nueva}…</b> No cierres la app; se volverá a abrir sola.</span>`);
+    } else if ((e.estado === 'manual' || e.estado === 'error') && e.comandos) {
+      // No se pudo instalar sola: comandos listos para copiar en la Terminal
+      aviso.hidden = false;
+      const texto = e.comandos.join('\n');
+      pintar(aviso, html`<span><b>${e.estado === 'manual' ? 'Para actualizar, abre la Terminal y pega esto:' : `No se pudo actualizar (${e.mensaje}). Puedes hacerlo en la Terminal:`}</b>
+        <code class="comandos">${texto}</code></span>
+        <button class="btn btn--primario btn--sm" data-copiar>Copiar</button>
+        ${e.estado === 'error' ? html`<button class="btn btn--borde btn--sm" data-instalar>Reintentar</button>` : ''}`);
+      $('[data-copiar]', aviso).addEventListener('click', async (ev) => {
+        try { await navigator.clipboard.writeText(texto); ev.currentTarget.textContent = 'Copiado'; } catch { /* se puede seleccionar a mano */ }
+      });
+      $('[data-instalar]', aviso)?.addEventListener('click', () => window.qb.actualizador.instalar());
     } else if (e.estado === 'descargando') {
       aviso.hidden = false;
       pintar(aviso, html`<span>Descargando versión ${e.nueva ?? ''}… ${e.progreso ?? 0}%</span>`);
